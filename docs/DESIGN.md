@@ -34,10 +34,13 @@ agent has to be reachable, and a phone in a drawer is not.
 
 A job names a command and a list of inputs. The agent owns splitting and completion:
 
-| Mode | Who splits | Resume granularity | Guarantee |
-|---|---|---|---|
-| **B — file list** (default) | agent | per input | full: completed inputs are skipped on resume |
-| **A — `--shard i/n`** | you | none | retry only: a dead shard restarts from its first input |
+| Mode | How you ask for it | Who splits | Resume granularity | Guarantee |
+|---|---|---|---|---|
+| **B — file list** (default) | `--inputs <glob\|file\|dir>` | agent | per input | full: finished inputs are skipped, and each recorded output is re-verified by digest before it is trusted |
+| **A — single command** | no `--inputs`: `hand run -- <cmd>` | nobody | none | retry only: a failed run restarts the command |
+
+`--shard i/n` slices the expanded list in mode B: contiguous, deterministic, and shared job id with
+the other slices. `hand run --inputs '*.mov' --shard 2/3 -- ./tool` is "your third of the work".
 
 Mode B runs the command once per input with this environment contract:
 

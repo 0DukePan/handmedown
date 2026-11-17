@@ -21,24 +21,54 @@ Your drawer has an old phone, a Raspberry Pi, and the laptop you replaced. `hand
 machine that runs your `ffmpeg`, your test suite, your build — and keeps running when they sleep,
 throttle, or die.
 
+This part works today, on one machine, with one binary:
+
 ```console
-$ hand run --shard 12 ./transcode -- *.mov
- 36 shards -> 3 devices (16 cores)
- done 412 files in 3m41s   (this laptop alone: 21m06s)   5.7x faster, $0.00
+$ hand run --inputs 'samples/*.txt' --outdir out -- ./transcode
+job loc-be71930edc0e  shard 1-of-1  5 inputs
+[1/5] take-01.txt                                  ok   538ms
+[2/5] take-02.txt                                  ok   543ms
+[3/5] take-03.txt                                  ok   505ms
+[4/5] take-04.txt                                  ok   512ms
+[5/5] take-05.txt                                  ok   535ms
+
+done in 2.8s: 5 ran, 0 skipped
 ```
+
+Every output is content-addressed (`out/1-of-1/take-01.txt.a9a37d340b74`), and every input is
+checkpointed. So you can stop it however you want and run the same command again:
+
+```console
+$ # ctrl-c, kill -9, close the laptop, lose power
+$ hand run --inputs 'samples/*.txt' --outdir out -- ./transcode
+job loc-be71930edc0e  shard 1-of-1  5 inputs
+resuming: 5 of 5 already finished in a previous run
+[1/5] take-01.txt                                  skip (finished in a previous run)
+...
+done in 1ms: 0 ran, 5 skipped
+```
+
+Same command, same job id, no repeated work. That is the whole mechanism the distributed half is built
+on.
 
 ## The part nobody else does
 
-Kill the control plane mid-job:
+Kill it mid-job. Really kill it — hard terminate, no cleanup, no goodbye:
 
 ```console
-$ kill -9 $(pgrep -f 'hand brain')
-$ hand up
- reattached in 240ms - 3 shards adopted by lease - 0 lost, 0 duplicated
+$ hand run --inputs 'in/*.txt' --outdir out -- ./work &
+$ kill -9 <hand>          # 4 of 12 inputs had finished
+$ hand run --inputs 'in/*.txt' --outdir out -- ./work
+job loc-3d11c7a8e209  shard 1-of-1  12 inputs
+resuming: 4 of 12 already finished in a previous run
+...
+done in 8.1s: 8 ran, 4 skipped
 ```
 
-Work is checkpointed on the device that runs it, and handed on by expiring lease. The brain is
-*allowed* to die. That is the whole design.
+The four finished inputs are **not** executed again — `scripts\proofs.ps1` asserts exactly that, and
+that the journal replays with contiguous sequence numbers. The same guarantee is what the brain will
+provide when *it* dies: work is checkpointed on the device that runs it, and handed on by expiring
+lease. The brain is *allowed* to die. That is the whole design.
 
 ## Install
 

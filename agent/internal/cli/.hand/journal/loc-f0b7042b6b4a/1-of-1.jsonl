@@ -1,0 +1,2 @@
+{"seq":1,"op":"start","job":"loc-f0b7042b6b4a","shard":"1-of-1","ts":"2026-11-17T16:36:57.9420034Z","total":1}
+{"seq":2,"op":"done","job":"loc-f0b7042b6b4a","shard":"1-of-1","ts":"2026-11-17T16:36:57.9910825Z","total":1}

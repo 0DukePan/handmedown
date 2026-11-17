@@ -20,10 +20,13 @@ const (
 const usage = `hand - run one command across the hardware you already own
 
 usage:
-  hand version            print the version and build target
-  hand help               print this text
+  hand run [flags] -- <command...>   run once per input, resumable and content-addressed
+  hand version                       print the version and build target
+  hand help                          print this text
 
-The brain and the job runner land milestone by milestone; two rules hold throughout:
+run ` + "`hand run --help`" + ` for the flags, the HAND_* environment contract, and an example.
+
+The brain and the distributed half land milestone by milestone; two rules hold throughout:
 you always get a one-line explanation of what failed, and the suggested next command.
 See docs/DESIGN.md for what is already proven.
 `
@@ -37,6 +40,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "run":
+		return runJob(args[1:], stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout, "hand %s (%s)\n", version.Version, version.Runtime())
 		return exitOK
