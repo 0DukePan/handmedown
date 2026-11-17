@@ -14,7 +14,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'test-installers', 'test-workflows', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'test-installers', 'test-workflows', 'measure-sizes', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -117,6 +117,18 @@ function Invoke-ChildScript([string]$Path, [string[]]$Arguments = @()) {
     if ($code -ne 0) { throw "$([System.IO.Path]::GetFileName($Path)) failed (exit $code)" }
 }
 
+function Invoke-MeasureSizes {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\measure-sizes.ps1'
+    # Passing "update" rewrites the docs; the default only reports, so a stale number fails rather
+    # than being silently corrected.
+    if ($Rest -and $Rest[0] -eq 'update') {
+        Invoke-ChildScript $script @('-Update')
+    } else {
+        Invoke-ChildScript $script @('-Check')
+    }
+}
+
 function Invoke-TestInstallers {
     Invoke-ChildScript (Join-Path $repo 'scripts\test-installers.ps1')
 }
@@ -174,6 +186,7 @@ switch ($Task) {
     'release-rehearsal' { Invoke-ReleaseRehearsal }
     'test-installers' { Invoke-TestInstallers }
     'test-workflows' { Invoke-TestWorkflows }
+    'measure-sizes' { Invoke-MeasureSizes }
     default {
         @'
 handmedown tasks
@@ -188,6 +201,7 @@ handmedown tasks
   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
   scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
   scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
+  scripts\tasks.ps1 measure-sizes [update]   the sizes quoted in the docs, measured from a real build
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host
