@@ -41,10 +41,10 @@ Sizes are from a local Windows/amd64 build on 2026-11-17, because they are the a
 
 | Artifact | Size |
 |---|---:|
-| `hand.exe` (agent) | 2.40 MB |
+| `hand.exe` (agent, `-ldflags "-s -w"`) | 7.08 MB |
 | brain `mix release` | 111.7 MB |
 
-The 46x gap is why the agent is Go: it has to run on a phone that already has an OS.
+The ~16x gap is why the agent is Go: it has to run on a phone that already has an OS.
 
 ### Added
 

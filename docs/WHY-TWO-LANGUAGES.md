@@ -29,10 +29,10 @@ Measured in this repo on 2026-11-17 (Windows/amd64), because an argument with no
 
 | Artifact | Size | What it means |
 |---|---:|---|
-| `hand.exe` (agent) | 2.40 MB | one static binary, no runtime, cross-compiles to 6 targets |
+| `hand.exe` (agent, stripped) | 7.08 MB | one static binary, no runtime, cross-compiles to 6 targets |
 | `mix release` (brain) | 111.7 MB | OTP included; must be installed where the brain runs |
 
-A 46x difference. That is not a stylistic preference about languages; it decides what can be installed
+A ~16x difference. That is not a stylistic preference about languages; it decides what can be installed
 on the device at the other end of the wire.
 
 ## The rule that keeps it honest
