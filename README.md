@@ -70,20 +70,37 @@ that the journal replays with contiguous sequence numbers. The same guarantee is
 provide when *it* dies: work is checkpointed on the device that runs it, and handed on by expiring
 lease. The brain is *allowed* to die. That is the whole design.
 
+## Run it today
+
+The agent is a single binary; the brain is an OTP release built from source.
+
+```sh
+# brain (Elixir 1.20 / OTP 29)
+cd brain && mix deps.get && mix run --no-halt
+# it prints the dashboard URL, a join command, and the join token
+
+# device (Go 1.27) - on the phone in Termux, on the Pi, on the laptop
+hand join --brain http://192.168.1.20:4100 --token <token from the brain>
+
+# from anywhere
+hand submit --brain http://192.168.1.20:4100 --token <token> \
+  --inputs '*.mov' --shards 4 -- ./transcode --in "$HAND_INPUT" --out "$HAND_OUTPUT"
+```
+
+Then open the dashboard. Devices, shards, progress, digests, and which device holds which lease.
+
 ## Install
 
 ```sh
-# macOS / Linux
+# macOS / Linux            (not published yet - these are the targets, not claims)
 curl -fsSL https://handmedown.dev/install.sh | sh
 
 # Windows
 irm https://raw.githubusercontent.com/0DukePan/handmedown/main/install.ps1 | iex
-
-# Android (Termux)
-pkg install hand
 ```
 
-On a second device, `hand join` with the token your brain prints. That is enrolment.
+Pre-v0.1: build from source with `scripts\tasks.ps1 build`. The installer lands with the first tagged
+release, and it verifies `SHA256SUMS.txt` before putting anything on your PATH.
 
 ## What it does NOT do
 
@@ -115,7 +132,12 @@ properly, including when *not* to do this.
 ```powershell
 _bootstrap\env.ps1            # put Go 1.27 and OTP 29 / Elixir 1.20 on this shell's PATH
 scripts\tasks.ps1 check       # fmt, vet, test - both halves
+scripts\tasks.ps1 proof       # hard-kill a local run and prove finished work is never repeated
+scripts\tasks.ps1 e2e         # brain + agent + lease + completion + brain crash, with real processes
 ```
+
+The two proof scripts are the honest version of the claims above: they spawn real processes, kill them
+ungracefully, and check the state afterwards.
 
 ## License
 

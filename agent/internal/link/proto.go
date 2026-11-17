@@ -85,6 +85,7 @@ type Lease struct {
 	Cmd     []string          `json:"cmd"`
 	Env     map[string]string `json:"env,omitempty"`
 	Inputs  []string          `json:"inputs"`
+	OutDir  string            `json:"outdir,omitempty"`
 	Index   int               `json:"index"`
 	Total   int               `json:"total"`
 	TTLMS   int               `json:"ttl_ms"`

@@ -169,6 +169,7 @@ defmodule Handmedown.Web.Link do
           "cmd" => job["cmd"],
           "env" => %{},
           "inputs" => shard["inputs"],
+          "outdir" => job["outdir"],
           "index" => shard["index"],
           "total" => shard["total"],
           "ttl_ms" => Application.get_env(:handmedown, :lease_ms, 30_000)

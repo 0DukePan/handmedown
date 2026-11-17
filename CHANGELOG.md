@@ -46,6 +46,24 @@ Sizes are from a local Windows/amd64 build on 2026-11-17, because they are the a
 
 The 46x gap is why the agent is Go: it has to run on a phone that already has an OS.
 
+### Added
+
+- Brain: `Handmedown.Schedule` owns every lease. 30 s TTL, 5 s sweep, retries until the attempt budget
+  is spent, and requeue-on-lease-expiry. A device that disconnects loses its shards immediately rather
+  than making the fleet wait for a timeout.
+- Brain: durable state as a single atomically-rewritten JSON snapshot, so `kill -9` leaves either the
+  old state or the new one and never a half-written file.
+- Brain: dashboard (server-rendered HTML, pushed over SSE), `/api/jobs`, `/api/state`, `/health`, and a
+  WebSocket endpoint for agents.
+- Agent: `hand join` dials out to a brain, enrols, heartbeats, and runs whatever it is leased.
+- Agent: `hand submit` expands inputs locally and posts a job - so a glob always means what the local
+  runner would have meant by it.
+- Agent: `hand version` now reports the build target; `hand run` is unchanged for local use.
+- Proofs: `scripts\e2e.ps1` runs the whole loop with real processes, including killing the brain's VM
+  and restarting it from disk.
+- Correctness tests for the scheduler: expiry and requeue, duplicate completion accepted, **different
+  digest marked `conflicted` and never resolved by picking a winner**, retry budget, and rebalancing.
+
 ### Notes
 
 - There is no Makefile. `make` is not present on a default Windows install, and a task runner that only

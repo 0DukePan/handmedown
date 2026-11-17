@@ -22,8 +22,8 @@ one more thing for a contributor to install. That cost is only worth paying when
 
 The agent cannot be BEAM: an OTP release is tens of MB and needs the runtime present — a bad tenant on
 a phone that also runs an OS. The brain cannot be Go, in the sense that matters: you would spend the
-project rebuilding supervision, per-entity processes, distributed messaging, and a live view layer, and
-you would do it worse than the runtime that ships all four.
+project rebuilding supervision, per-device processes, broadcast fan-out and a hot-reloadable control
+plane, and you would do it worse than the runtime that ships the first three.
 
 Measured in this repo on 2026-11-17 (Windows/amd64), because an argument with no numbers is an opinion:
 

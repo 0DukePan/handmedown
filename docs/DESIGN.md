@@ -18,13 +18,30 @@ That is a narrower claim than "exactly once", deliberately. See [What is not gua
    | hand agent |-- dials OUT, WebSocket, always ----------->|  brain (Elixir)      |
    |  (Go, ~7MB)|   heartbeat 5s, progress, journal digest    |  +----------------+  |
    |            |<-- lease + shard assignment --------------- |  | Scheduler      |  |
-   |  +------+  |                                            |  | NodeSup  1/proc|  |
-   |  |journal| |  checkpoint: seq, bytes, part digest        |  | ShardSup 1/proc|  |
-   |  +------+  |  output: out/<shard>/<part>.<hash> (rename)|  | LiveView       |  |
-   +------------+                                            |  | SQLite         |  |
+   |  +------+  |                                            |  | 1 proc/device  |  |
+   |  |journal| |  checkpoint: seq, bytes, part digest        |  | leases, sweep  |  |
+   |  +------+  |  output: out/<shard>/<part>.<hash> (rename)|  +----------------+  |
+   +------------+                                            |  | JSON snapshot  |  |
+                                                             |  | SSE + HTML     |  |
                                                              |  +----------------+  |
                                                              +----------------------+
 ```
+
+The device's socket *is* its scheduler entry: the WebSocket handler process holds the connection and
+is registered as the device, so "the device went away" is one `:DOWN` message and nothing to clean up.
+
+## Decisions taken while building
+
+Recorded because they differ from the original plan in
+[repo-of-the-day-proposal-handmedown.md](../../repo-of-the-day-proposal-handmedown.md), and a design
+doc that only agrees with the plan is not a design doc:
+
+| Planned | Built | Why |
+|---|---|---|
+| Postgres or SQLite via Ecto | One JSON file, atomically rewritten | No C NIF means no compiler needed to run the brain; a snapshot is either old or new after a crash, with no repair step to reason about. v0.2 can swap in Postgres behind `Store` without touching the scheduler. |
+| Phoenix LiveView dashboard | Server-rendered HTML pushed over SSE | LiveView needs a JS asset build; SSE needs 6 lines of client JS and no build step, which keeps "one command" true on a fresh machine. The rendering stays on the server, where the tests are. |
+| Two brains clustered | One brain, documented as single-writer | The crash guarantee comes from the agent's journal and the leases, not from consensus. Clustering adds a coordination problem without adding a guarantee users can see. |
+| `NodeSup`/`ShardSup` process trees | One process per device; shard execution on the device | Shards run on the device, so the brain tracks them as data with a deadline rather than as processes it must supervise. Fewer moving parts on the side that is allowed to die. |
 
 **Agents dial out, always.** No inbound ports, no router configuration, works behind CGNAT, survives a
 phone changing networks three times a day. This is also the honest answer to "why not Nomad": a Nomad

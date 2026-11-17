@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -89,6 +89,16 @@ function Invoke-Build {
     try { Step 'mix release' { mix release --overwrite } } finally { Pop-Location }
 }
 
+function Invoke-E2E {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\e2e.ps1'
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw "scripts\e2e.ps1 is missing"
+    }
+    & $script
+    if ($LASTEXITCODE -ne 0) { throw "e2e failed (exit $LASTEXITCODE)" }
+}
+
 function Invoke-Proof {
     Need-Toolchains
     $script = Join-Path $repo 'scripts\proofs.ps1'
@@ -112,6 +122,7 @@ switch ($Task) {
         Push-Location $brain; try { mix phx.server } finally { Pop-Location }
     }
     'proof' { Invoke-Proof }
+    'e2e'   { Invoke-E2E }
     default {
         @'
 handmedown tasks
@@ -121,7 +132,8 @@ handmedown tasks
   scripts\tasks.ps1 build     hand.exe + brain release
   scripts\tasks.ps1 agent ..  run the agent from source (args are passed through)
   scripts\tasks.ps1 brain     run the brain in dev
-  scripts\tasks.ps1 proof     behavioural proofs: crash-resume, lease expiry, digest conflict
+  scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
+  scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host
