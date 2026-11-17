@@ -211,4 +211,31 @@ defmodule Handmedown.ScheduleTest do
 
     assert first["node_id"] != second["node_id"]
   end
+
+  # Found by the review: `refresh_job` was called but its result discarded at placement time, so a job
+  # with a leased shard was reported as "queued" on the dashboard for its whole first shard. Nothing
+  # failed, because nothing asserted the job's status while work was in flight.
+  test "a job whose shard is leased is running, not queued" do
+    register("n-1")
+    created = job(1, ["a"])
+
+    assert_receive {:hand, :lease, _leased}, 1_000
+
+    {:ok, current} = Store.job(created["id"])
+    assert current["status"] == "running"
+  end
+
+  test "a job becomes done when every shard reports done" do
+    register("n-1")
+    created = job(2, ["a", "b"])
+
+    assert_receive {:hand, :lease, first}, 1_000
+    assert_receive {:hand, :lease, second}, 1_000
+
+    {:ok, _} = Schedule.done("n-1", first["id"], "sha256:1111", 1, 10)
+    {:ok, _} = Schedule.done("n-1", second["id"], "sha256:2222", 1, 10)
+
+    {:ok, finished} = Store.job(created["id"])
+    assert finished["status"] == "done"
+  end
 end

@@ -50,7 +50,7 @@ Sizes are from a local Windows/amd64 build on 2026-11-17, because they are the a
 | `hand.exe` (agent, `-ldflags "-s -w"`) | <!-- size:agent -->7.10 MB<!-- /size:agent --> |
 | brain `mix release` | <!-- size:brain -->125.32 MB<!-- /size:brain --> |
 
-The ~16x gap is why the agent is Go: it has to run on a phone that already has an OS.
+The <!-- size:ratio -->17.6x<!-- /size:ratio --> gap is why the agent is Go: it has to run on a phone that already has an OS.
 
 ### Added
 

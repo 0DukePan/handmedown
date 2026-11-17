@@ -107,6 +107,15 @@ fetch "$sums_url" "$tmp/SHA256SUMS.txt" || die "could not download $sums_url (ch
 expected="$(awk -v want="$asset" '$2 == want { print tolower($1); exit }' "$tmp/SHA256SUMS.txt")"
 [ -n "$expected" ] || die "SHA256SUMS.txt has no entry for $asset; the release is incomplete, do not install it"
 
+# The line names our asset. If its digest is not a SHA-256 hex string, the checksum file itself is
+# wrong - a different problem from a corrupt download, and it deserves a different message.
+digest_len=$(printf '%s' "$expected" | wc -c | tr -d ' ')
+case "$digest_len:$expected" in
+    64:*[!0-9a-f]*) die "SHA256SUMS.txt has an unparseable entry for $asset (expected 64 hex characters); do not install from this release" ;;
+    64:*) : ;;
+    *) die "SHA256SUMS.txt has an unparseable entry for $asset (expected 64 hex characters, got '$expected'); do not install from this release" ;;
+esac
+
 say "  downloading..."
 fetch "$BASE_URL/$asset" "$tmp/$asset" || die "could not download $BASE_URL/$asset"
 

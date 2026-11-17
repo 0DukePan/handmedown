@@ -16,7 +16,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'test-readme', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'test-readme', 'demo-gif', 'dashboard-image', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -77,6 +77,10 @@ function Invoke-Check {
     # The README is documentation, and documentation that lies is a bug. This is offline and quick.
     Step 'readme claims' { Invoke-ChildScript (Join-Path $repo 'scripts\test-readme.ps1') }
 
+    # The quoted sizes drift the moment anyone touches the build; catching that here is why the numbers
+    # are measured instead of remembered.
+    Step 'documented sizes' { Invoke-ChildScript (Join-Path $repo 'scripts\measure-sizes.ps1') -Arguments @('-Check') }
+
     Write-Host ''
     Write-Host 'check: ok' -ForegroundColor Green
 }
@@ -120,6 +124,24 @@ function Invoke-ChildScript([string]$Path, [string[]]$Arguments = @()) {
         $ErrorActionPreference = $previous
     }
     if ($code -ne 0) { throw "$([System.IO.Path]::GetFileName($Path)) failed (exit $code)" }
+}
+
+function Invoke-DemoGif {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\make-demo-gif.py'
+    if (-not (Test-Path -LiteralPath $script)) { throw 'scripts\make-demo-gif.py is missing' }
+
+    # Pillow is not a project dependency; it is a tool for regenerating an asset. Say so clearly.
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { throw 'python is not on PATH: Pillow is needed to regenerate the demo GIF' }
+    & $python.Source $script
+    if ($LASTEXITCODE -ne 0) { throw "make-demo-gif.py failed (exit $LASTEXITCODE)" }
+}
+
+function Invoke-DashboardImage {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\make-dashboard-image.ps1'
+    Invoke-ChildScript $script
 }
 
 function Invoke-TestReadme {
@@ -211,6 +233,8 @@ switch ($Task) {
     'test-workflows' { Invoke-TestWorkflows }
     'measure-sizes' { Invoke-MeasureSizes }
     'test-readme' { Invoke-TestReadme }
+    'demo-gif' { Invoke-DemoGif }
+    'dashboard-image' { Invoke-DashboardImage }
     default {
         @'
 handmedown tasks
@@ -223,10 +247,13 @@ handmedown tasks
   scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
   scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
-  scripts\tasks.ps1 release-test      test that rehearsal: names, formats, checksums, corruption  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
+  scripts\tasks.ps1 release-test      test that rehearsal: names, formats, checksums, corruption
+  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
   scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
   scripts\tasks.ps1 measure-sizes [update]   the sizes quoted in the docs, measured from a real build
   scripts\tasks.ps1 test-readme     every command and link in the README is real
+  scripts\tasks.ps1 demo-gif        regenerate docs/demo.gif from a real `hand demo`
+  scripts\tasks.ps1 dashboard-image regenerate docs/dashboard.png from a real brain
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host

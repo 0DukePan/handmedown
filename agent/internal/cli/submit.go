@@ -136,10 +136,19 @@ func submitCommand(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// next returns the value after a flag, or "" when the flag is last. Callers that need to tell the two
+// apart use nextValue.
 func next(args []string, index *int) string {
+	value, _ := nextValue(args, index)
+	return value
+}
+
+// nextValue is next, with the "was there a value at all" answer the caller needs to report a usage
+// error rather than silently parsing an empty string.
+func nextValue(args []string, index *int) (string, bool) {
 	if *index+1 >= len(args) {
-		return ""
+		return "", false
 	}
 	*index++
-	return args[*index]
+	return args[*index], true
 }

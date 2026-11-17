@@ -119,6 +119,9 @@ pkg install curl
 curl -fsSL https://raw.githubusercontent.com/0DukePan/handmedown/main/install.sh | sh
 ```
 
+**Uninstall** is a file and a `PATH` entry: delete `%LOCALAPPDATA%\handmedown` on Windows, or
+`~/.local/bin/hand` on macOS and Linux. Nothing else is installed, and no service is registered.
+
 **No release yet?** Build from source: `scripts\tasks.ps1 build` (needs Go 1.27 and Elixir 1.20 / OTP 29;
 `_bootstrap\env.ps1` fetches both without administrator rights). Binaries are unsigned.
 
@@ -156,8 +159,18 @@ scripts\tasks.ps1 proof       # hard-kill a local run and prove finished work is
 scripts\tasks.ps1 e2e         # brain + agent + lease + completion + brain crash, with real processes
 ```
 
-The two proof scripts are the honest version of the claims above: they spawn real processes, kill them
-ungracefully, and check the state afterwards.
+The proof scripts are the honest version of the claims above: they spawn real processes, kill them
+ungracefully, and check the state afterwards. The two images are generated from real runs, not drawn:
+
+```
+scripts\tasks.ps1 demo-gif            # regenerate docs/demo.gif from a real `hand demo`
+scripts\tasks.ps1 dashboard-image     # regenerate docs/dashboard.png from a real brain
+scripts\tasks.ps1 measure-sizes       # check the sizes quoted in the docs against a real build
+```
+
+Asset size budgets live in [`release-assets.json`](release-assets.json), alongside the artefact names
+that the release workflow, the installers and their tests all read. Numbers quoted in prose between
+`<!-- size:name -->` markers are rewritten by `measure-sizes update`, and `check` fails when they drift.
 
 ## License
 

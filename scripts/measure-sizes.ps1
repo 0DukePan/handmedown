@@ -50,9 +50,17 @@ function Measure-AgentMB {
 function Measure-BrainMB {
     Push-Location $brain
     try {
-        & mix release --overwrite 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'brain release build failed' }
-        $release = Join-Path $brain '_build\dev\rel\handmedown'
+        # prod, because that is what the release workflow ships. Measuring dev would report a size
+        # that no user ever downloads.
+        $env:MIX_ENV = 'prod'
+        try {
+            & mix deps.get --only prod 2>&1 | Out-Null
+            & mix release --overwrite 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'brain release build failed' }
+        } finally {
+            $env:MIX_ENV = $null
+        }
+        $release = Join-Path $brain '_build\prod\rel\handmedown'
         if (-not (Test-Path -LiteralPath $release)) { throw "release directory not found: $release" }
         $bytes = (Get-ChildItem -LiteralPath $release -Recurse -File | Measure-Object -Property Length -Sum).Sum
         return $bytes / 1MB

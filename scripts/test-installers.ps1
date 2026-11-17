@@ -18,9 +18,41 @@ param()
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $agent = Join-Path $repo 'agent'
-$python = 'C:\Users\<you>\AppData\Local\Programs\Python\Python314\python.exe'
-$bash = 'C:\Program Files\Git\bin\bash.exe'
+function Find-Python {
+    # Discovered, not hard-coded: a fixed interpreter path makes this suite pass on exactly one machine.
+    foreach ($candidate in @('python', 'python3', 'py')) {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($command) { return $command.Source }
+    }
+    foreach ($candidate in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe')
+    )) {
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
+    return $null
+}
+
+function Find-Bash {
+    foreach ($candidate in @(
+        (Join-Path $env:ProgramFiles 'Git\bin\bash.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+    $command = Get-Command bash -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    return $null
+}
+
+$python = Find-Python
+$bash = Find-Bash
 $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+if (-not $python) {
+    throw 'no Python interpreter found: the installer tests need one to serve the stubbed release. Install Python, or test the installers by hand against a real release.'
+}
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     $envPs1 = Join-Path (Split-Path -Parent $repo) '_bootstrap\env.ps1'

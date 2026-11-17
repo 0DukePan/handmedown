@@ -38,6 +38,9 @@ const demoWorkerCommand = "__demo-worker"
 const defaultDemoInputs = 12
 const defaultDemoStopAfter = 4
 
+// demoInputDelay is the per-input pause in the demo worker, so the transcript is readable.
+const demoInputDelay = 120 * time.Millisecond
+
 type demoOptions struct {
 	inputs    int
 	stopAfter int
@@ -52,7 +55,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 		case args[index] == "--keep":
 			opts.keep = true
 		case args[index] == "--inputs":
-			value, ok := nextArg(args, &index)
+			value, ok := nextValue(args, &index)
 			if !ok {
 				return usageError("hand demo: --inputs wants a number\n", stderr)
 			}
@@ -62,7 +65,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 			}
 			opts.inputs = parsed
 		case args[index] == "--stop-after":
-			value, ok := nextArg(args, &index)
+			value, ok := nextValue(args, &index)
 			if !ok {
 				return usageError("hand demo: --stop-after wants a number\n", stderr)
 			}
@@ -92,7 +95,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 
 	workDir, err := os.MkdirTemp("", "hand-demo-")
 	if err != nil {
-		fmt.Fprintf(stderr, "hand demo: cannot create a work directory: %v\n", err)
+		fmt.Fprintf(stderr, "hand demo: cannot create a work directory: %v\n  Check that TMPDIR (or %%TEMP%%) exists and is writable.\n", err)
 		return exitFailure
 	}
 	if !opts.keep {
@@ -105,7 +108,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 	counter := filepath.Join(workDir, "executions.txt")
 	for _, dir := range []string{inputDir, outDir, journalDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			fmt.Fprintf(stderr, "hand demo: %v\n", err)
+			fmt.Fprintf(stderr, "hand demo: %v\n  Check free space and permissions, then retry.\n", err)
 			return exitFailure
 		}
 	}
@@ -114,7 +117,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 	for index := 1; index <= opts.inputs; index++ {
 		path := filepath.Join(inputDir, fmt.Sprintf("take-%02d.txt", index))
 		if err := os.WriteFile(path, []byte(fmt.Sprintf("frame %d\n", index)), 0o644); err != nil {
-			fmt.Fprintf(stderr, "hand demo: %v\n", err)
+			fmt.Fprintf(stderr, "hand demo: %v\n  Check free space and permissions, then retry.\n", err)
 			return exitFailure
 		}
 		inputs = append(inputs, path)
@@ -184,7 +187,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "  done in %s: %d ran, %d skipped\n\n", result.Duration.Round(time.Millisecond), result.Done, result.Skipped)
 
 	// --- verdict ----------------------------------------------------------------
-	failures := checkDemo(workDir, outDir, counter, inputs, finishedFirstRun)
+	failures := checkDemo(outDir, counter, inputs, finishedFirstRun)
 
 	fmt.Fprintln(stdout, "verdict")
 	if len(failures) > 0 {
@@ -205,7 +208,7 @@ func runDemo(args []string, stdout, stderr io.Writer) int {
 }
 
 // checkDemo is the part that makes this a demonstration rather than a claim.
-func checkDemo(workDir, outDir, counter string, inputs []string, finishedFirstRun int) []string {
+func checkDemo(outDir, counter string, inputs []string, finishedFirstRun int) []string {
 	var failures []string
 
 	// Every input must have exactly one output. Count files rather than trusting the engine's summary.
@@ -279,10 +282,10 @@ func demoWorker(stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
-	// Slow enough that the transcript is readable, fast enough that the demo stays snappy.
-	if delay := parseDelay(os.Getenv("HAND_DEMO_DELAY_MS")); delay > 0 {
-		time.Sleep(delay)
-	}
+	// Slow enough that the transcript is readable, fast enough that the demo stays snappy. Fixed
+	// rather than configurable: the README GIF is generated from this transcript, so its pacing is
+	// part of the asset.
+	time.Sleep(demoInputDelay)
 
 	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
 		fmt.Fprintf(stderr, "hand __demo-worker: %v\n", err)
@@ -306,17 +309,6 @@ func demoWorker(stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-func parseDelay(value string) time.Duration {
-	if value == "" {
-		return 120 * time.Millisecond
-	}
-	millis, err := strconv.Atoi(value)
-	if err != nil || millis < 0 {
-		return 120 * time.Millisecond
-	}
-	return time.Duration(millis) * time.Millisecond
-}
-
 func readLines(path string) []string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -329,14 +321,6 @@ func readLines(path string) []string {
 		}
 	}
 	return lines
-}
-
-func nextArg(args []string, index *int) (string, bool) {
-	if *index+1 >= len(args) {
-		return "", false
-	}
-	*index++
-	return args[*index], true
 }
 
 func usageError(message string, stderr io.Writer) int {

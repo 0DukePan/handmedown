@@ -37,7 +37,22 @@ if ($env:PROCESSOR_ARCHITECTURE -and $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     throw "hand: this build targets windows/amd64; your architecture is $($env:PROCESSOR_ARCHITECTURE). Build from source instead."
 }
 
-$asset = 'hand_windows_amd64.exe'
+# The artefact name comes from the shared release manifest, so there is one place that defines it.
+$manifestPath = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'release-assets.json'
+if (Test-Path -LiteralPath $manifestPath) {
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $windowsTarget = $manifest.agent_targets | Where-Object { $_.goos -eq 'windows' } | Select-Object -First 1
+    if (-not $windowsTarget) { throw 'hand: release manifest declares no windows target' }
+    $ext = ''
+    if ($windowsTarget.PSObject.Properties.Name -contains 'ext') { $ext = $windowsTarget.ext }
+    $asset = $manifest.agent_pattern.Replace('{goos}', $windowsTarget.goos).Replace('{goarch}', $windowsTarget.goarch).Replace('{ext}', $ext)
+} else {
+    # Build-from-source checkouts (and the raw-URL one-liner before a release exists) may not have the
+    # manifest beside the script; the name is still the same contract.
+    $asset = 'hand_windows_amd64.exe'
+}
+$checksumFile = if ($manifest -and $manifest.checksums) { $manifest.checksums } else { 'SHA256SUMS.txt' }
+$versionEnv = if ($manifest -and $manifest.env) { $manifest.env.version } else { 'HAND_VERSION' }
 
 if (-not $BaseUrl) {
     if ($version -eq 'latest') {
@@ -72,7 +87,7 @@ function Get-Sha256([string]$Path) {
 # --- checksum first -----------------------------------------------------------
 # The checksum is fetched before the binary, so a broken release fails before anything large is
 # downloaded, and the expected hash is never derived from the thing being checked.
-$sumsUrl = "$BaseUrl/SHA256SUMS.txt"
+$sumsUrl = "$BaseUrl/$checksumFile"
 try {
     $sums = Get-Text $sumsUrl
 } catch {
@@ -80,12 +95,27 @@ try {
 }
 
 $expected = $null
+$malformed = $null
 foreach ($line in ($sums -split "`r?`n")) {
     $trimmed = $line.Trim()
     if ($trimmed -eq '') { continue }
     # "<sha256>  <filename>": split on the first whitespace run only.
     $parts = $trimmed -split '\s+', 2
-    if ($parts.Count -eq 2 -and $parts[1] -eq $asset) { $expected = $parts[0].ToLower(); break }
+    if ($parts.Count -ne 2) { continue }
+    if ($parts[1] -ne $asset) { continue }
+
+    # The line names our asset. If its digest is not a SHA-256, say so: "checksum mismatch" would send
+    # the user looking for a corrupt download when the checksum file itself is wrong.
+    if ($parts[0] -notmatch '^[0-9a-fA-F]{64}$') {
+        $malformed = $trimmed
+        break
+    }
+    $expected = $parts[0].ToLower()
+    break
+}
+
+if ($malformed) {
+    throw "hand: SHA256SUMS.txt has an unparseable entry for ${asset}:`n  $malformed`n  Expected '<64 hex characters>  $asset'. Do not install from this release."
 }
 
 if (-not $expected) {

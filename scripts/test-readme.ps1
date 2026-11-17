@@ -37,6 +37,21 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 
 $readme = [System.IO.File]::ReadAllText($readmePath, [System.Text.Encoding]::UTF8)
 
+# Budgets live in the release manifest, alongside the artefact contract.
+# Dot-sourced with an explicit repo root: release-assets.ps1 otherwise derives it from its own location,
+# which is the scripts/ directory, not the repository.
+. (Join-Path $repo 'scripts\release-assets.ps1') -RepoRoot $repo
+$releaseAssets = Get-ReleaseAssets -RepoRoot $repo
+
+function Get-Budget([string]$AssetPath) {
+    $key = $AssetPath -replace '\\', '/'
+    foreach ($name in $releaseAssets.Budgets.PSObject.Properties.Name) {
+        if ($name -eq $key) { return [int]$releaseAssets.Budgets.$name }
+    }
+    # An asset with no declared budget still gets a default ceiling rather than silently passing.
+    return 1500000
+}
+
 # --- the CLI exists and knows its subcommands --------------------------------
 Write-Host 'README vs the CLI' -ForegroundColor Cyan
 
@@ -49,7 +64,18 @@ try {
 $help = (& $hand --help) -join "`n"
 Check 'the binary runs' ($LASTEXITCODE -eq 0 -and $help -match 'usage:') $help
 
-# Every `hand <subcommand>` the README shows must be a subcommand the binary accepts.
+# Every `hand <subcommand>` the README shows must be a subcommand the binary actually implements.
+#
+# The list of implemented subcommands is read from the binary's own help text, not written down here: a
+# hard-coded copy would keep passing after someone deleted a command, which is precisely the drift this
+# check exists to catch.
+$implemented = @()
+foreach ($match in [regex]::Matches($help, '(?m)^\s*hand\s+([a-z][a-z-]*)')) {
+    $implemented += $match.Groups[1].Value
+}
+$implemented = @($implemented | Sort-Object -Unique)
+Check 'the binary reports its own subcommands' ($implemented.Count -ge 4) ("found: " + ($implemented -join ', '))
+
 $documented = @()
 foreach ($match in [regex]::Matches($readme, '(?m)^\s*\$?\s*hand\s+([a-z][a-z-]*)')) {
     $documented += $match.Groups[1].Value
@@ -57,11 +83,7 @@ foreach ($match in [regex]::Matches($readme, '(?m)^\s*\$?\s*hand\s+([a-z][a-z-]*
 $documented = @($documented | Sort-Object -Unique)
 
 foreach ($command in $documented) {
-    if ($command -in @('run', 'submit', 'join', 'demo', 'version', 'help')) {
-        Check ("documented subcommand '{0}' is implemented" -f $command) $true
-    } else {
-        Check ("documented subcommand '{0}' is implemented" -f $command) $false 'the CLI has no such subcommand'
-    }
+    Check ("documented subcommand '{0}' is implemented" -f $command) ($implemented -contains $command) ("the CLI implements: " + ($implemented -join ', '))
 }
 Check 'the README documents at least the four core commands' ($documented.Count -ge 3) ($documented -join ', ')
 
@@ -121,7 +143,9 @@ foreach ($match in [regex]::Matches($readme, '!\[[^\]]*\]\(([^)]+)\)')) {
 
     if (Test-Path -LiteralPath $path) {
         $size = (Get-Item -LiteralPath $path).Length
-        Check ("{0} is within its budget (1.5 MB)" -f $target) ($size -lt 1500000) ("{0:N0} KB" -f ($size / 1KB))
+        $budget = Get-Budget $target
+        Check ("{0} is non-empty" -f $target) ($size -gt 0) ("{0:N0} bytes" -f $size)
+        Check ("{0} is within its budget ({1:N1} MB)" -f $target, ($budget / 1MB)) ($size -le $budget) ("{0:N0} KB" -f ($size / 1KB))
     }
 }
 
