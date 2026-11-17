@@ -7,6 +7,8 @@
 #   scripts\tasks.ps1 brain        run the brain (dev)
 #   scripts\tasks.ps1 proof        local proof: hard-kill a run, prove finished work is not repeated
 #   scripts\tasks.ps1 e2e          end-to-end: brain, agent, lease, completion, brain crash
+#   scripts\tasks.ps1 release-rehearsal v0.1.0   cut the six release artefacts locally, verify them
+#   scripts\tasks.ps1 release-test              test the rehearsal: names, formats, checksums, corruption
 #
 # There is deliberately no Makefile: `make` is not on Windows by default, and a task runner that only
 # half the contributors can run is worse than none.
@@ -14,10 +16,11 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'help')]
     [string]$Task = 'help',
 
-    # Everything after the task name, passed through to `go run` for the `agent` task.
+    # Everything after the task name, passed through to `go run` for the `agent` task and to the
+    # rehearsal for `release-rehearsal` (where the first argument is the version).
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
@@ -110,6 +113,38 @@ function Invoke-Proof {
     if ($LASTEXITCODE -ne 0) { throw "proofs failed (exit $LASTEXITCODE)" }
 }
 
+function Invoke-ReleaseRehearsal {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\release-rehearsal.ps1'
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw 'scripts\release-rehearsal.ps1 is missing'
+    }
+    # The task takes the version and nothing else. Everything else the rehearsal accepts (-OutDir,
+    # -VerifyOnly) belongs to the script, and pretending to pass flags through here would only produce
+    # a binding error that reads like a rehearsal bug.
+    if (-not $Rest -or $Rest.Count -eq 0) {
+        throw 'release-rehearsal: a version is required. Example: scripts\tasks.ps1 release-rehearsal v0.1.0'
+    }
+    if ($Rest.Count -gt 1) {
+        $unexpected = $Rest[1..($Rest.Count - 1)] -join ' '
+        $message = 'release-rehearsal: unexpected argument(s): ' + $unexpected +
+            '. This task takes the version only; run scripts\release-rehearsal.ps1 directly for -OutDir or -VerifyOnly.'
+        throw $message
+    }
+    & $script -Version $Rest[0]
+    if ($LASTEXITCODE -ne 0) { throw "release rehearsal failed (exit $LASTEXITCODE)" }
+}
+
+function Invoke-ReleaseTest {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\release-test.ps1'
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw 'scripts\release-test.ps1 is missing'
+    }
+    & $script
+    if ($LASTEXITCODE -ne 0) { throw "release rehearsal test failed (exit $LASTEXITCODE)" }
+}
+
 switch ($Task) {
     'check' { Invoke-Check }
     'fmt'   { Invoke-Fmt }
@@ -124,6 +159,8 @@ switch ($Task) {
     }
     'proof' { Invoke-Proof }
     'e2e'   { Invoke-E2E }
+    'release-rehearsal' { Invoke-ReleaseRehearsal }
+    'release-test'      { Invoke-ReleaseTest }
     default {
         @'
 handmedown tasks
@@ -135,6 +172,14 @@ handmedown tasks
   scripts\tasks.ps1 brain     run the brain in dev
   scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
   scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
+
+  scripts\tasks.ps1 release-rehearsal v0.1.0
+                              cut the six hand_<os>_<arch> artefacts into dist\, write
+                              SHA256SUMS.txt, verify formats, architectures, checksums, and the
+                              injected version, and prove a corrupted copy is rejected
+  scripts\tasks.ps1 release-test
+                              test the rehearsal above: runs it into a temp directory and checks the
+                              names, formats, checksums and corruption path independently
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host

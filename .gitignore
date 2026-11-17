@@ -4,6 +4,9 @@
 /agent/bin/
 **/*.test
 
+# Release artefacts from scripts\release-rehearsal.ps1. Built, never committed: a release is a tag.
+/dist/
+
 # Elixir / OTP
 /brain/_build/
 /brain/deps/
