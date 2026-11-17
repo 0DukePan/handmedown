@@ -5,7 +5,8 @@
 #   scripts\tasks.ps1 build        hand.exe + brain release
 #   scripts\tasks.ps1 agent        run the agent from source
 #   scripts\tasks.ps1 brain        run the brain (dev)
-#   scripts\tasks.ps1 proof        behavioural proofs: crash-resume, lease expiry, digest conflict
+#   scripts\tasks.ps1 proof        local proof: hard-kill a run, prove finished work is not repeated
+#   scripts\tasks.ps1 e2e          end-to-end: brain, agent, lease, completion, brain crash
 #
 # There is deliberately no Makefile: `make` is not on Windows by default, and a task runner that only
 # half the contributors can run is worse than none.
