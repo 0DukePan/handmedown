@@ -7,6 +7,8 @@
 #   scripts\tasks.ps1 brain        run the brain (dev)
 #   scripts\tasks.ps1 proof        local proof: hard-kill a run, prove finished work is not repeated
 #   scripts\tasks.ps1 e2e          end-to-end: brain, agent, lease, completion, brain crash
+#   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
+#   scripts\tasks.ps1 release-test                 test that rehearsal: names, formats, checksums, corruption
 #
 # There is deliberately no Makefile: `make` is not on Windows by default, and a task runner that only
 # half the contributors can run is worse than none.
@@ -14,7 +16,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'test-installers', 'test-workflows', 'measure-sizes', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -144,11 +146,23 @@ function Invoke-ReleaseRehearsal {
         throw "scripts\release-rehearsal.ps1 is missing"
     }
 
-    # The version is a tag-shaped argument because that is what a real release injects.
-    $version = 'v0.0.0-rehearsal'
-    if ($Rest -and $Rest.Count -ge 1) { $version = $Rest[0] }
+    # The version is a tag-shaped argument because that is what a real release injects. Anything after
+    # it is forwarded as-is: Invoke-ChildScript starts a new powershell process, so flags keep their
+    # meaning instead of being bound by this parameter block.
+    $arguments = @('-Version', 'v0.0.0-rehearsal')
+    if ($Rest -and $Rest.Count -ge 1) {
+        $arguments = @('-Version', $Rest[0])
+        if ($Rest.Count -gt 1) { $arguments += $Rest[1..($Rest.Count - 1)] }
+    }
 
-    Invoke-ChildScript $script @('-Version', $version)
+    Invoke-ChildScript $script $arguments
+}
+
+# The rehearsal's own test. It lives in the normal task list rather than in check because it builds
+# six binaries: cheap enough to run on purpose, too slow to run on every edit.
+function Invoke-ReleaseTest {
+    Need-Toolchains
+    Invoke-ChildScript (Join-Path $repo 'scripts\release-test.ps1')
 }
 
 function Invoke-E2E {
@@ -184,6 +198,7 @@ switch ($Task) {
     'proof' { Invoke-Proof }
     'e2e'   { Invoke-E2E }
     'release-rehearsal' { Invoke-ReleaseRehearsal }
+    'release-test'      { Invoke-ReleaseTest }
     'test-installers' { Invoke-TestInstallers }
     'test-workflows' { Invoke-TestWorkflows }
     'measure-sizes' { Invoke-MeasureSizes }
@@ -199,7 +214,7 @@ handmedown tasks
   scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
   scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
-  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
+  scripts\tasks.ps1 release-test      test that rehearsal: names, formats, checksums, corruption  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
   scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
   scripts\tasks.ps1 measure-sizes [update]   the sizes quoted in the docs, measured from a real build
 

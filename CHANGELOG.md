@@ -27,6 +27,12 @@ instead of guessing.
 - Brain: supervision root with a fleet process registry; `mix release` produces a runnable release.
 - Tooling: `scripts\tasks.ps1` as the single task entry point, portable no-admin toolchains under
   `_bootstrap\`, CI across three OSes for the agent, release workflow emitting checksummed binaries.
+- Release: `scripts\tasks.ps1 release-rehearsal v0.1.0` cuts the release locally and offline - six
+  `hand_<goos>_<goarch>` binaries with the version injected at link time, `SHA256SUMS.txt` in sha256sum
+  format, then verifies each artefact by its own header (ELF/Mach-O/PE and the architecture inside it),
+  re-derives every digest, runs the native build to check it prints the injected version and platform,
+  and proves the verifier rejects a deliberately corrupted copy. `scripts\tasks.ps1 release-test` runs
+  the whole thing and re-derives the same facts independently.
 
 ### Changed
 
