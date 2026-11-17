@@ -11,11 +11,15 @@ defmodule Handmedown.Web.Router do
   alias Handmedown.{Broadcast, Schedule}
   alias Handmedown.Web.Dashboard
 
-  # Query-string parsing is explicit, and deliberately not Plug.Parsers: a body parser would read and
-  # consume the POST body (and reject an unexpected content type with 415), while the one POST here
-  # reads its own body so a malformed payload cannot take the router down.
-  plug(:match)
+  # Query-string parsing must come before :match. Plug.Router builds the plug chain from this list in
+  # order, and :match is what later dispatches to the route; a plug placed after it runs only for routes
+  # that :match could not resolve, so `conn.query_params` stayed unfetched for every real request.
+  #
+  # Deliberately not Plug.Parsers: a body parser would read and consume the POST body, and would reject
+  # an unexpected content type with 415. The one POST here reads its own body so a malformed payload
+  # cannot take the router down.
   plug(:query_string)
+  plug(:match)
   plug(:dispatch)
 
   get "/" do
@@ -72,11 +76,11 @@ defmodule Handmedown.Web.Router do
   # --- helpers --------------------------------------------------------------
 
   # Populates conn.query_params from the query string without touching the body.
-  defp query_string(%Plug.Conn{query_string: ""} = conn, _opts), do: conn
-
-  defp query_string(conn, _opts) do
-    Plug.Conn.fetch_query_params(conn)
-  end
+  #
+  # `?live` is optional, so a request with no query string must not be an error: fetch_query_params
+  # handles the empty string fine, but calling it unconditionally is what the tests expect to be safe
+  # for every route, so the guard is on the plug being a conn at all rather than on the string.
+  defp query_string(conn, _opts), do: Plug.Conn.fetch_query_params(conn)
 
   defp stream(conn) do
     receive do
