@@ -123,9 +123,23 @@ the conflict check above catches it.
 - **Clock sanity.** Device clocks are untrusted. Timing is the brain's, in elapsed form; a device that
   reports a clock three days behind is still scheduled correctly, because nothing is ordered by its
   clock.
-- **A single writer.** v0.1 runs one brain per database. Two brains against one SQLite file is not
+- **A single writer.** v0.1 runs one brain per database. Two brains against one state file is not
   supported and will corrupt state; clustering (v0.2) is a leader-and-standby design, documented when
   it exists.
+- **A whole process tree on cancel.** Cancelling a shard terminates the command the agent started. A
+  build tool that spawns grandchildren of its own can outlive that cancel on Windows, where there is no
+  process group to signal. The journal still protects the work: a shard whose parent was cancelled is
+  requeued, and any output the orphan went on to write lands under its own content address, where the
+  digest check sees it. Tracked as a known gap, not an oversight.
+
+## Known gaps
+
+| Gap | Consequence | Why it is acceptable in v0.1 |
+|---|---|---|
+| Grandchild processes survive a cancel on Windows | A cancelled build may keep burning CPU briefly | The result is still correct; only the tidiness of the cancel is affected |
+| Device clock skew | Progress timestamps on the dashboard can look out of order | Leases are computed on the brain, so scheduling is unaffected |
+| A device that loses the brain mid-shard keeps working | Work continues on a lease the brain has already requeued | The journal makes the retry safe; at most one attempt's work is duplicated |
+| No TLS, token auth only | Traffic is readable on the local network | Documented in `SECURITY.md`; LAN or Tailscale only |
 
 ## Budgets
 

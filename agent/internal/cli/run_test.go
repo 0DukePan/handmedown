@@ -205,8 +205,13 @@ func TestFailingCommandIsReportedAndExitsNonZero(t *testing.T) {
 func TestCommandModeRunsOnceWithoutInputs(t *testing.T) {
 	t.Setenv("HAND_CLI_HELPER", "noop")
 
+	// The journal must go to a temp dir. Without --journal it defaults to .hand/journal relative to
+	// the working directory, which during `go test` is the package directory: the test would write
+	// state into the source tree, and that state would then get committed.
+	journalDir := filepath.Join(t.TempDir(), "journal")
+
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"run", "--", selfExecutable(t)}, &stdout, &stderr)
+	code := Run([]string{"run", "--journal", journalDir, "--", selfExecutable(t)}, &stdout, &stderr)
 	if code != exitOK {
 		t.Fatalf("exit = %d, want 0: %s", code, stderr.String())
 	}

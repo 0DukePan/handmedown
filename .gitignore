@@ -15,12 +15,15 @@
 /brain/priv/static/cache_manifest.json
 
 # Local runtime state: journals, outputs, brain database. Never committed.
-/.hand/
-/out/
-/data/
-/brain/*.db
-/brain/*.db-shm
-/brain/*.db-wal
+# Not rooted: a test or a run can create .hand/ next to any working directory, and a path-anchored
+# pattern only caught the repository root.
+.hand/
+hand-out/
+out/
+data/
+brain/*.db
+brain/*.db-shm
+brain/*.db-wal
 
 # Python from scripts/
 __pycache__/
