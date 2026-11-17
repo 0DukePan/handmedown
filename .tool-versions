@@ -1,0 +1,5 @@
+# Pinned toolchains. asdf / mise read this; _bootstrap\env.ps1 does the same thing on Windows
+# without either installed.
+go 1.27.4
+erlang 29.1.2
+elixir 1.20.5-otp-29

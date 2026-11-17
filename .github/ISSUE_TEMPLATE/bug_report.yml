@@ -1,0 +1,72 @@
+name: Bug report
+description: Something broke, and it is not lost work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a **shard was lost, duplicated, or finished with the wrong digest**, stop here and use the
+        **Lost work** template instead. That is the one bug class this project exists to prevent, and it
+        gets a different, faster path.
+
+        The fields below look like paperwork. They are not: `hand version` plus `hand doctor` is usually
+        enough to tell whether the bug is in the agent, the brain, or the link between them.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+      placeholder: |
+        Ran: hand run --inputs '*.wav' --outdir out -- ./transcode
+        Expected: 40 files converted.
+        Got: the run stopped at 12 and printed "lease expired".
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The exact commands, smallest version that still breaks.
+      render: console
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Which half
+      options:
+        - agent (the device)
+        - brain (the control plane)
+        - the link between them
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and device
+      description: |
+        Paste the output of `hand version` (or `hand doctor` on the device) and the brain's version
+        from the dashboard footer.
+      render: console
+    validations:
+      required: true
+  - type: textarea
+    id: journal
+    attributes:
+      label: Journal tail, if a shard is involved
+      description: |
+        Last 10 lines of `.hand/journal/<job_id>/<shard_id>.jsonl` on the device. Remove anything
+        private first — paths and filenames are usually all that is needed.
+      render: json
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I am not reporting a security problem here (those go to the private advisory link in SECURITY.md).
+          required: true

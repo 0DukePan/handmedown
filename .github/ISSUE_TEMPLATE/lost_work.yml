@@ -1,0 +1,69 @@
+name: Lost work
+description: A shard was lost, duplicated, or produced the wrong output. This is the priority bug.
+labels: ["correctness", "priority"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project makes exactly one strong promise: **a shard survives the death of the brain, the
+        death of the agent, and the disappearance of the device — at most one lease of repeated work,
+        never corrupt or duplicated output.** If that promise broke, this is the bug that matters, and
+        the journal on disk explains what happened.
+
+        Do not try to tidy the journal before attaching it. The torn last line, if there is one, is
+        evidence.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong
+      options:
+        - A shard never finished (lost)
+        - A shard ran twice and both outputs were kept (duplicated)
+        - Two devices reported different digests for one shard (conflict)
+        - Output file is missing or corrupt although the journal says done
+        - The brain lost shards after a restart
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: timeline
+    attributes:
+      label: What was happening
+      description: Which device died, was it `kill -9`, did wifi drop, did the laptop sleep?
+    validations:
+      required: true
+  - type: textarea
+    id: journal
+    attributes:
+      label: The journal file(s)
+      description: |
+        Attach `.hand/journal/<job_id>/<shard_id>.jsonl` for every affected shard — whole file, not a
+        tail, if it is under a few hundred lines. This is the ground truth for what the agent believed.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What is on disk
+      description: |
+        Output of `hand status --json` on the brain, plus a directory listing of the shard's output
+        folder. If a digest is wrong, give both the journal digest and the digest of the file on disk
+        (`sha256sum <file>` or `Get-FileHash <file>`).
+      render: console
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Agent version on each device involved, and the brain version.
+      render: console
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Before submitting
+      options:
+        - label: The command being run is deterministic (same input, same bytes out). If it is not, that is the actual finding — say so in the timeline and we will document it.
+          required: true

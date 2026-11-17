@@ -1,0 +1,38 @@
+# Go
+/agent/hand.exe
+/agent/hand
+/agent/bin/
+**/*.test
+
+# Elixir / OTP
+/brain/_build/
+/brain/deps/
+/brain/cover/
+/brain/doc/
+/brain/erl_crash.dump
+/brain/*.ez
+/brain/tmp/
+/brain/priv/static/cache_manifest.json
+
+# Local runtime state: journals, outputs, brain database. Never committed.
+/.hand/
+/out/
+/data/
+/brain/*.db
+/brain/*.db-shm
+/brain/*.db-wal
+
+# Python from scripts/
+__pycache__/
+*.pyc
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Env
+.env

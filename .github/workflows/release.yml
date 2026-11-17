@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  # Needed to create the release and upload assets. Nothing else is requested.
+  contents: write
+
+jobs:
+  agent:
+    name: agent ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: linux,   goarch: arm }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+
+      # No android target: Termux is an ordinary Linux userland on an arm64 kernel, so linux/arm64
+      # is the Termux build. GOOS=android would demand cgo and an NDK for no benefit.
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        shell: bash
+        run: |
+          mkdir -p ../dist
+          out="../dist/hand_${GOOS}_${GOARCH}${{ matrix.ext }}"
+          go build -trimpath -ldflags "-s -w -X github.com/0DukePan/handmedown/agent/internal/version.Version=${GITHUB_REF_NAME}" -o "$out" ./cmd/hand
+          ls -l "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hand-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/hand_*
+          if-no-files-found: error
+
+  brain:
+    name: brain release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: brain
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29.1"
+          elixir-version: "1.20"
+
+      # The release is built for the host it runs on. Shipping a cross-OS BEAM release is not a
+      # thing; `hand up` compiles it locally on Windows/macOS instead.
+      - name: Build release
+        env:
+          MIX_ENV: prod
+        run: |
+          mix deps.get --only prod
+          mix compile
+          mix release --overwrite
+
+      - name: Package
+        run: |
+          mkdir -p ../dist
+          tar -czf "../dist/handmedown-brain-${GITHUB_REF_NAME}-linux-amd64.tar.gz" -C _build/prod/rel handmedown
+          ls -l ../dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brain-release
+          path: dist/handmedown-brain-*
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: [agent, brain]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Checksums are what the installer verifies before putting anything on PATH.
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: dist
+        run: gh release create "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --generate-notes ./*

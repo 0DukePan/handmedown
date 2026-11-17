@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/0DukePan/handmedown/security/advisories/new
+    about: Please report vulnerabilities privately, not in a public issue. See SECURITY.md.
+  - name: Question or idea
+    url: https://github.com/0DukePan/handmedown/discussions
+    about: Design questions and "would this work for X" belong in Discussions.

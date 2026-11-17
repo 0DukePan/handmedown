@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  agent:
+    name: agent (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      # The agent has to build on every OS it claims to run on. A green Linux-only CI is how
+      # cross-platform claims rot.
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      # go.mod is the single source of truth for the version. _bootstrap\env.ps1 pins the same
+      # number locally, so "works on my machine" and CI cannot drift.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+
+      - name: Show toolchain
+        shell: bash
+        run: go version
+
+      # gofmt -l prints the files that need formatting, so any output at all is a failure.
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "these files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: build
+        shell: bash
+        run: |
+          go build -trimpath -o hand ./cmd/hand
+          ls -l hand* 2>/dev/null || true
+
+  brain:
+    name: brain (ubuntu, OTP 29 / Elixir 1.20)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: brain
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the pair in .tool-versions. OTP and Elixir versions are coupled: an Elixir built
+      # for OTP 28 runs on OTP 29, but the reverse silently changes behaviour, so both are explicit.
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29.1"
+          elixir-version: "1.20"
+
+      - name: Show toolchain
+        run: |
+          elixir --version
+          mix --version
+
+      - name: Cache deps and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            brain/deps
+            brain/_build
+          key: ${{ runner.os }}-otp29-elixir20-${{ hashFiles('brain/mix.lock') }}
+
+      - name: mix deps.get
+        run: mix deps.get
+
+      # Formatting is a review comment nobody should have to write.
+      - name: mix format --check-formatted
+        run: mix format --check-formatted
+
+      - name: mix compile --warnings-as-errors
+        run: mix compile --warnings-as-errors
+
+      # Test env compiles separately: warnings there are just as fatal, but the compile happens in
+      # its own environment, so it needs its own check.
+      - name: mix compile --warnings-as-errors (test env)
+        run: mix compile --warnings-as-errors
+        env:
+          MIX_ENV: test
+
+      - name: mix test
+        run: mix test
+
+      - name: mix release
+        run: mix release --overwrite
