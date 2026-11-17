@@ -17,8 +17,18 @@ if ([string]::IsNullOrEmpty($inputPath) -or [string]::IsNullOrEmpty($outputPath)
 
 $content = Get-Content -LiteralPath $inputPath -Raw
 
-# Long enough that a kill lands mid-run, short enough that twelve inputs stay quick.
-Start-Sleep -Milliseconds 250
+# The per-input delay is injectable so a caller can make an interruption land deterministically rather
+# than racing a fixed timer. The default is the value the proofs were tuned with, so existing callers
+# behave exactly as before.
+$delayMs = 250
+if (-not [string]::IsNullOrEmpty($env:HAND_PROOF_DELAY_MS)) {
+    $parsed = 0
+    if ([int]::TryParse($env:HAND_PROOF_DELAY_MS, [ref]$parsed) -and $parsed -ge 0) { $delayMs = $parsed }
+}
+if ($delayMs -gt 0) {
+    # Long enough that a kill lands mid-run, short enough that twelve inputs stay quick.
+    Start-Sleep -Milliseconds $delayMs
+}
 
 $parent = Split-Path -Parent $outputPath
 if ($parent -and -not (Test-Path -LiteralPath $parent)) {
