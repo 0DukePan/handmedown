@@ -247,7 +247,15 @@ Write-Host 'SHA256SUMS.txt' -ForegroundColor Cyan
 $sums = Read-Sums (Join-Path $out 'SHA256SUMS.txt')
 Check 'SHA256SUMS.txt exists' $sums.Present ''
 Check 'every line is "<64 hex>  <name>" (sha256sum format, two spaces)' ($sums.Present -and $sums.Malformed.Count -eq 0) ($sums.Malformed -join '; ')
-Check ("it has one line per artefact ({0})" -f $targets.Count) ($sums.Entries.Count -eq $targets.Count) ("lines={0}" -f $sums.Entries.Count)
+# A release contains the six agent binaries and the brain archive. Re-deriving the expectation here
+# (rather than trusting the rehearsal) is the point of this test; the archive is counted separately so
+# an agent binary that went missing still fails.
+# Entries is a name -> digest map, so the names are its keys.
+$sumNames = @($sums.Entries.Keys)
+$agentEntries = @($sumNames | Where-Object { $_ -like 'hand_*' })
+$brainEntries = @($sumNames | Where-Object { $_ -like 'handmedown-brain_*.tar.gz' })
+Check ("it has one line per agent artefact ({0})" -f $targets.Count) ($agentEntries.Count -eq $targets.Count) ("agent lines={0}" -f $agentEntries.Count)
+Check 'it also covers the brain archive' ($brainEntries.Count -eq 1) ("brain lines={0}" -f $brainEntries.Count)
 
 foreach ($target in $targets) {
     $path = Join-Path $out $target.Name

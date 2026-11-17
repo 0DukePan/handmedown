@@ -43,7 +43,10 @@ param(
 
     # Verify a directory that already exists instead of building one. This is what the test points at
     # a corrupted copy, and it is what you run after moving a release between machines.
-    [switch]$VerifyOnly
+    [switch]$VerifyOnly,
+
+    # Skip the brain archive. Say so explicitly rather than silently shipping half a release.
+    [switch]$NoBrain
 )
 
 $ErrorActionPreference = 'Stop'
@@ -333,6 +336,49 @@ if (-not $VerifyOnly) {
     # because the carriage return becomes part of the file name being checked.
     [System.IO.File]::WriteAllText($sumsPath, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
     Check 'wrote SHA256SUMS.txt with one line per artefact' ($lines.Count -eq $expectedNames.Count) ("lines={0}" -f $lines.Count)
+
+    # --- brain archive -------------------------------------------------------
+    # Ticket 02: a release is not only the agent. The brain is packaged for the host it runs on, and
+    # it belongs in the same checksum file, so the file describes a complete release rather than half
+    # of one. Building it needs Elixir; when that is absent the agent checksums still stand and the
+    # gap is stated rather than silently skipped.
+    if (-not $NoBrain) {
+        $mixCommand = Get-Command mix -ErrorAction SilentlyContinue
+        if (-not $mixCommand) {
+            Write-Host "  brain:      skipped (mix not on PATH)" -ForegroundColor Yellow
+            Check 'brain archive built' $false 'mix is not on PATH, so the release is incomplete: install Elixir or pass -NoBrain to say you know'
+        } else {
+            $brainDir = Join-Path $repo 'brain'
+            Push-Location $brainDir
+            try {
+                $env:MIX_ENV = 'prod'
+                & mix deps.get --only prod 2>&1 | Out-Null
+                & mix release --overwrite 2>&1 | Out-Null
+                $releaseOk = ($LASTEXITCODE -eq 0)
+            } finally {
+                $env:MIX_ENV = $null
+                Pop-Location
+            }
+
+            $releaseDir = Join-Path $brainDir '_build\prod\rel\handmedown'
+            $archiveName = ("handmedown-brain_{0}_{1}.tar.gz" -f $Version, "windows-amd64")
+            $archivePath = Join-Path $outPath $archiveName
+            if ($releaseOk -and (Test-Path -LiteralPath $releaseDir)) {
+                # tar is in Windows 10+ and on every unix; using it keeps the archive reproducible
+                # rather than depending on Compress-Archive's zip semantics.
+                & tar -czf $archivePath -C (Split-Path -Parent $releaseDir) handmedown 2>&1 | Out-Null
+                $archiveOk = (Test-Path -LiteralPath $archivePath)
+                Check ("built {0}" -f $archiveName) $archiveOk "tar exit $LASTEXITCODE"
+                if ($archiveOk) {
+                    $lines.Add(('{0}  {1}' -f (Get-Sha256 $archivePath), $archiveName))
+                    [System.IO.File]::WriteAllText($sumsPath, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+                    Write-Host ("  brain:      {0} ({1:N1} MB)" -f $archiveName, ((Get-Item $archivePath).Length / 1MB))
+                }
+            } else {
+                Check 'brain archive built' $false 'mix release failed or produced no release directory'
+            }
+        }
+    }
 }
 
 # --- verify -----------------------------------------------------------------
@@ -358,8 +404,13 @@ if ($sums.Present) { $sumsDetail = $sums.Malformed -join '; ' }
 Check 'SHA256SUMS.txt exists and parses as sha256sum output' ($sums.Present -and $sums.Malformed.Count -eq 0) $sumsDetail
 
 $sumNames = @($sums.Entries.Keys)
-$sumsMissing = @($expectedNames | Where-Object { $sumNames -notcontains $_ })
-$sumsExtra = @($sumNames | Where-Object { $expectedNames -notcontains $_ })
+# The brain archive is part of the release, so it is a legal line in the checksum file. Matching is by
+# shape rather than by this run's exact version string, so a rehearsed directory can be re-verified.
+$brainLine = @($sumNames | Where-Object { $_ -like 'handmedown-brain_*.tar.gz' })
+$agentLines = @($sumNames | Where-Object { $_ -like 'hand_*' })
+
+$sumsMissing = @($expectedNames | Where-Object { $agentLines -notcontains $_ })
+$sumsExtra = @($agentLines | Where-Object { $expectedNames -notcontains $_ })
 $sumsProblems = @()
 foreach ($name in $sumsMissing) { $sumsProblems += "missing line: $name" }
 foreach ($name in $sumsExtra) { $sumsProblems += "unknown line: $name" }
