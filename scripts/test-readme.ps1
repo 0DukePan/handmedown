@@ -135,8 +135,18 @@ Check 'the curl one-liner is backed by install.sh in this repo' ((-not $mentions
 Write-Host ''
 Write-Host 'assets' -ForegroundColor Cyan
 
+$imageTargets = @()
 foreach ($match in [regex]::Matches($readme, '!\[[^\]]*\]\(([^)]+)\)')) {
-    $target = $match.Groups[1].Value
+    $imageTargets += $match.Groups[1].Value
+}
+# HTML img tags are used when the author wants width control; missing them would leave the assets in
+# this README unchecked.
+foreach ($match in [regex]::Matches($readme, '<img[^>]+src="([^"]+)"')) {
+    $imageTargets += $match.Groups[1].Value
+}
+$imageTargets = @($imageTargets | Sort-Object -Unique)
+
+foreach ($target in $imageTargets) {
     if ($target -match '^https?://') { continue }
     $path = Join-Path $repo ($target -replace '/', '\')
     Check ("README image exists: {0}" -f $target) (Test-Path -LiteralPath $path)
