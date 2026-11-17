@@ -4,7 +4,9 @@
 
 **Your old hardware is a cluster. Prove it in one command.**
 
-`curl -fsSL https://handmedown.dev/install.sh | sh`
+![hand demo: an interrupted run, resumed, with nothing executed twice](docs/demo.gif)
+
+`curl -fsSL https://raw.githubusercontent.com/0DukePan/handmedown/main/install.sh | sh`
 
 _One binary. No YAML, no containers, no inbound ports, no account._
 
@@ -12,14 +14,21 @@ _One binary. No YAML, no containers, no inbound ports, no account._
 
 ---
 
-> **Status: v0.1 in progress.** The local runner is real; the distributed half is being built in
-> public. See [docs/DESIGN.md](docs/DESIGN.md) for what is proven and what is not yet.
+> **Status: v0.1 in progress.** The runner and the scheduler both work and are covered by proofs; the
+> release and installers are prepared but no tag has been cut yet, so the one-liners above will only
+> work once v0.1.0 is published. Binaries are **unsigned**: build from source if that matters to you.
+> See [docs/DESIGN.md](docs/DESIGN.md) for what is proven and what is not.
 
 ## What it does
 
 Your drawer has an old phone, a Raspberry Pi, and the laptop you replaced. `hand` turns them into one
 machine that runs your `ffmpeg`, your test suite, your build — and keeps running when they sleep,
 throttle, or die.
+
+The GIF above is `hand demo`, and it is not a mock-up: it runs real work, interrupts itself, resumes,
+and then checks that nothing ran twice. You can run it yourself.
+
+![the dashboard, with a device holding two leased shards](docs/dashboard.png)
 
 This part works today, on one machine, with one binary:
 
@@ -92,15 +101,26 @@ Then open the dashboard. Devices, shards, progress, digests, and which device ho
 ## Install
 
 ```sh
-# macOS / Linux            (not published yet - these are the targets, not claims)
-curl -fsSL https://handmedown.dev/install.sh | sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/0DukePan/handmedown/main/install.sh | sh
 
 # Windows
 irm https://raw.githubusercontent.com/0DukePan/handmedown/main/install.ps1 | iex
 ```
 
-Pre-v0.1: build from source with `scripts\tasks.ps1 build`. The installer lands with the first tagged
-release, and it verifies `SHA256SUMS.txt` before putting anything on your PATH.
+Both verify the download against the release's `SHA256SUMS.txt` and refuse to install on a mismatch.
+Neither needs root or an administrator; both land under your home directory.
+
+**Termux (Android)** is the `linux/arm64` build — a phone is an ordinary Linux userland, so there is no
+separate Android artefact:
+
+```sh
+pkg install curl
+curl -fsSL https://raw.githubusercontent.com/0DukePan/handmedown/main/install.sh | sh
+```
+
+**No release yet?** Build from source: `scripts\tasks.ps1 build` (needs Go 1.27 and Elixir 1.20 / OTP 29;
+`_bootstrap\env.ps1` fetches both without administrator rights). Binaries are unsigned.
 
 ## What it does NOT do
 

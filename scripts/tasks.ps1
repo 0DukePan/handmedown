@@ -16,7 +16,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'test-readme', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -74,6 +74,9 @@ function Invoke-Check {
     # artefact contract is a broken release waiting to happen.
     Step 'workflow contract' { Invoke-ChildScript (Join-Path $repo 'scripts\test-workflows.ps1') }
 
+    # The README is documentation, and documentation that lies is a bug. This is offline and quick.
+    Step 'readme claims' { Invoke-ChildScript (Join-Path $repo 'scripts\test-readme.ps1') }
+
     Write-Host ''
     Write-Host 'check: ok' -ForegroundColor Green
 }
@@ -117,6 +120,11 @@ function Invoke-ChildScript([string]$Path, [string[]]$Arguments = @()) {
         $ErrorActionPreference = $previous
     }
     if ($code -ne 0) { throw "$([System.IO.Path]::GetFileName($Path)) failed (exit $code)" }
+}
+
+function Invoke-TestReadme {
+    $script = Join-Path $repo 'scripts\test-readme.ps1'
+    Invoke-ChildScript $script
 }
 
 function Invoke-MeasureSizes {
@@ -202,6 +210,7 @@ switch ($Task) {
     'test-installers' { Invoke-TestInstallers }
     'test-workflows' { Invoke-TestWorkflows }
     'measure-sizes' { Invoke-MeasureSizes }
+    'test-readme' { Invoke-TestReadme }
     default {
         @'
 handmedown tasks
@@ -217,6 +226,7 @@ handmedown tasks
   scripts\tasks.ps1 release-test      test that rehearsal: names, formats, checksums, corruption  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
   scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
   scripts\tasks.ps1 measure-sizes [update]   the sizes quoted in the docs, measured from a real build
+  scripts\tasks.ps1 test-readme     every command and link in the README is real
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host
