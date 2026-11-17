@@ -24,8 +24,13 @@ defmodule Handmedown.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  # Every dependency is pure Elixir or pure Erlang on purpose. A SQLite adapter would drag in a C NIF,
+  # which needs a compiler on every machine that runs the brain - the opposite of "one command".
   defp deps do
     [
+      {:bandit, "~> 1.15"},
+      {:plug, "~> 1.20"},
+      {:websock_adapter, "~> 0.7.2"},
       {:jason, "~> 1.4"}
     ]
   end
