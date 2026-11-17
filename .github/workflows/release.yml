@@ -101,6 +101,29 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # A release missing one artefact is worse than no release: the installers derive their download
+      # URL from these names, so a gap becomes a 404 for the user and nobody sees it until someone
+      # opens an issue. Fail here, before anything is published.
+      - name: Verify every expected artefact is present
+        working-directory: dist
+        run: |
+          missing=0
+          for expected in \
+            hand_linux_amd64 hand_linux_arm64 hand_linux_arm \
+            hand_darwin_arm64 hand_darwin_amd64 hand_windows_amd64.exe; do
+            if [ ! -f "$expected" ]; then
+              echo "::error::missing artefact: $expected"
+              missing=1
+            fi
+          done
+          if ! ls handmedown-brain-*.tar.gz >/dev/null 2>&1; then
+            echo "::error::missing artefact: handmedown-brain-*.tar.gz"
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+          echo "all expected artefacts present:"
+          ls -l
+
       # Checksums are what the installer verifies before putting anything on PATH.
       - name: Checksums
         working-directory: dist

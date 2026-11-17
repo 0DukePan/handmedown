@@ -14,7 +14,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'test-installers', 'test-workflows', 'help')]
     [string]$Task = 'help',
 
     # Everything after the task name, passed through to `go run` for the `agent` task.
@@ -68,6 +68,10 @@ function Invoke-Check {
         Step 'mix compile --warnings-as-errors' { mix compile --warnings-as-errors }
         Step 'mix test' { mix test }
     } finally { Pop-Location }
+    # Offline and instant, so it belongs in the normal gate: a workflow that stopped matching the
+    # artefact contract is a broken release waiting to happen.
+    Step 'workflow contract' { Invoke-ChildScript (Join-Path $repo 'scripts\test-workflows.ps1') }
+
     Write-Host ''
     Write-Host 'check: ok' -ForegroundColor Green
 }
@@ -90,6 +94,37 @@ function Invoke-Build {
     try { Step 'mix release' { mix release --overwrite } } finally { Pop-Location }
 }
 
+# Runs a proof script as a child PowerShell process.
+#
+# These scripts finish with `exit N`. Invoked with `&`, that exit would terminate *this* runner - a
+# failing proof would kill the task runner silently instead of reporting the failure. A child process
+# gives a real exit code and leaves the runner alive to explain what happened.
+function Invoke-ChildScript([string]$Path, [string[]]$Arguments = @()) {
+    if (-not (Test-Path -LiteralPath $Path)) { throw "$Path is missing" }
+    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    # A proof script that fails writes to stderr on purpose. With 'Stop', PowerShell 5.1 would turn that
+    # into a NativeCommandError and bury the exit code, so relax it just for the call and throw our own,
+    # clearer message afterwards.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $powershell -NoProfile -ExecutionPolicy Bypass -File $Path @Arguments
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) { throw "$([System.IO.Path]::GetFileName($Path)) failed (exit $code)" }
+}
+
+function Invoke-TestInstallers {
+    Invoke-ChildScript (Join-Path $repo 'scripts\test-installers.ps1')
+}
+
+function Invoke-TestWorkflows {
+    Invoke-ChildScript (Join-Path $repo 'scripts\test-workflows.ps1')
+}
+
 function Invoke-ReleaseRehearsal {
     Need-Toolchains
     $script = Join-Path $repo 'scripts\release-rehearsal.ps1'
@@ -101,8 +136,7 @@ function Invoke-ReleaseRehearsal {
     $version = 'v0.0.0-rehearsal'
     if ($Rest -and $Rest.Count -ge 1) { $version = $Rest[0] }
 
-    & $script -Version $version
-    if ($LASTEXITCODE -ne 0) { throw "release-rehearsal failed (exit $LASTEXITCODE)" }
+    Invoke-ChildScript $script @('-Version', $version)
 }
 
 function Invoke-E2E {
@@ -111,8 +145,7 @@ function Invoke-E2E {
     if (-not (Test-Path -LiteralPath $script)) {
         throw "scripts\e2e.ps1 is missing"
     }
-    & $script
-    if ($LASTEXITCODE -ne 0) { throw "e2e failed (exit $LASTEXITCODE)" }
+    Invoke-ChildScript $script
 }
 
 function Invoke-Proof {
@@ -121,8 +154,7 @@ function Invoke-Proof {
     if (-not (Test-Path -LiteralPath $script)) {
         throw "scripts\proofs.ps1 does not exist yet: the behavioural proofs are built in M2 and M5."
     }
-    & $script
-    if ($LASTEXITCODE -ne 0) { throw "proofs failed (exit $LASTEXITCODE)" }
+    Invoke-ChildScript $script
 }
 
 switch ($Task) {
@@ -140,6 +172,8 @@ switch ($Task) {
     'proof' { Invoke-Proof }
     'e2e'   { Invoke-E2E }
     'release-rehearsal' { Invoke-ReleaseRehearsal }
+    'test-installers' { Invoke-TestInstallers }
+    'test-workflows' { Invoke-TestWorkflows }
     default {
         @'
 handmedown tasks
@@ -152,6 +186,8 @@ handmedown tasks
   scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
   scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
+  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
+  scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host
