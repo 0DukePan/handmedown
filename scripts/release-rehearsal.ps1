@@ -1,8 +1,8 @@
 # Cut a release locally, offline, to prove it can be cut at all.
 #
 #   scripts\tasks.ps1 release-rehearsal v0.1.0
-#   scripts\release-rehearsal.ps1 -Version v0.1.0 [-OutDir dist]
-#   scripts\release-rehearsal.ps1 -VerifyOnly -OutDir dist [-Version v0.1.0]
+#   scripts\release-rehearsal.ps1 -Version v0.1.0 [-Out dist]
+#   scripts\release-rehearsal.ps1 -VerifyOnly -Out dist [-Version v0.1.0]
 #
 # A release that only CI can perform is a release you cannot debug. This is the same work the tagged
 # workflow does, runnable on a laptop with no network, no remote and no `gh`:
@@ -31,12 +31,15 @@
 
 [CmdletBinding()]
 param(
-    # The tag-like version to inject, e.g. v0.1.0. Required unless -VerifyOnly is used.
+    # The tag-like version to inject, e.g. v0.1.0. Required unless -VerifyOnly is used. A tag shape is
+    # enforced because this string is both what the binary prints and what the release is called: two
+    # spellings of one version is how a binary and a tag start to disagree.
     [Parameter(Position = 0)]
+    [ValidatePattern('^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$')]
     [string]$Version = '',
 
     # Where the artefacts go. Defaults to dist\ in the repository.
-    [string]$OutDir = '',
+    [string]$Out = '',
 
     # Verify a directory that already exists instead of building one. This is what the test points at
     # a corrupted copy, and it is what you run after moving a release between machines.
@@ -239,27 +242,13 @@ function Test-Artifact([string]$Path, $Target, [string]$ExpectedSha256) {
 }
 
 # --- arguments --------------------------------------------------------------
-if (-not $OutDir) { $OutDir = Join-Path $repo 'dist' }
-$OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
+if (-not $Out) { $Out = Join-Path $repo 'dist' }
+$outPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Out)
 
-if (-not $VerifyOnly) {
-    if (-not $Version) {
-        Write-Host 'release-rehearsal: a version is required, because the point of a rehearsal is that the' -ForegroundColor Red
-        Write-Host 'binary and the tag agree. Example: scripts\tasks.ps1 release-rehearsal v0.1.0' -ForegroundColor Red
-        exit 2
-    }
-    # This string ends up inside a double-quoted -ldflags argument, so anything that could break that
-    # quoting is rejected before a single byte is built.
-    if ($Version -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*$') {
-        Write-Host ("release-rehearsal: version {0} is not tag-shaped. Use [A-Za-z0-9._+-] only, e.g. v0.1.0" -f $Version) -ForegroundColor Red
-        exit 2
-    }
-    # internal/version defaults to "dev". A rehearsal that passes "dev" proves nothing about injection.
-    if ($Version -eq 'dev') {
-        Write-Host 'release-rehearsal: pass the version a tag would carry (v0.1.0), not the "dev" default: the' -ForegroundColor Red
-        Write-Host 'check below can only distinguish an injected version from the default if they differ.' -ForegroundColor Red
-        exit 2
-    }
+if (-not $VerifyOnly -and -not $Version) {
+    Write-Host 'release-rehearsal: a version is required, because the point of a rehearsal is that the' -ForegroundColor Red
+    Write-Host 'binary and the tag agree. Example: scripts\tasks.ps1 release-rehearsal v0.1.0' -ForegroundColor Red
+    exit 2
 }
 
 # go.mod is the single source of truth for the module path, so moving the module does not silently
@@ -275,19 +264,19 @@ if (-not $modulePath) {
 }
 $versionVar = "$modulePath/internal/version.Version"
 
-$sumsPath = Join-Path $OutDir 'SHA256SUMS.txt'
+$sumsPath = Join-Path $outPath 'SHA256SUMS.txt'
 $expectedNames = @($targets | ForEach-Object { Get-ArtifactName $_ })
 
 # --- build ------------------------------------------------------------------
 if (-not $VerifyOnly) {
     Write-Host ''
-    Write-Host ("release-rehearsal: {0} -> {1}" -f $Version, $OutDir) -ForegroundColor Cyan
-    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    Write-Host ("release-rehearsal: {0} -> {1}" -f $Version, $outPath) -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force -Path $outPath | Out-Null
 
     # Remove last run's artefacts and checksums first. A build that failed halfway would otherwise
     # leave a previous binary to be verified and shipped under the current tag.
     foreach ($name in $expectedNames) {
-        $stale = Join-Path $OutDir $name
+        $stale = Join-Path $outPath $name
         if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Force }
     }
     if (Test-Path -LiteralPath $sumsPath) { Remove-Item -LiteralPath $sumsPath -Force }
@@ -304,7 +293,7 @@ if (-not $VerifyOnly) {
         $env:CGO_ENABLED = '0'
         foreach ($target in $targets) {
             $name = Get-ArtifactName $target
-            $path = Join-Path $OutDir $name
+            $path = Join-Path $outPath $name
             $env:GOOS = $target.Goos
             $env:GOARCH = $target.Goarch
 
@@ -323,7 +312,7 @@ if (-not $VerifyOnly) {
     Write-Host ''
     Write-Host 'sizes' -ForegroundColor Cyan
     foreach ($name in $expectedNames) {
-        $item = Get-Item -LiteralPath (Join-Path $OutDir $name)
+        $item = Get-Item -LiteralPath (Join-Path $outPath $name)
         Write-Host ("  {0,-26} {1,8:N2} MB" -f $item.Name, ($item.Length / 1MB)) -ForegroundColor DarkGray
     }
 
@@ -338,7 +327,7 @@ if (-not $VerifyOnly) {
 
     $lines = New-Object 'System.Collections.Generic.List[string]'
     foreach ($name in $names) {
-        $lines.Add(('{0}  {1}' -f (Get-Sha256 (Join-Path $OutDir $name)), $name))
+        $lines.Add(('{0}  {1}' -f (Get-Sha256 (Join-Path $outPath $name)), $name))
     }
     # LF endings and no BOM, exactly as sha256sum writes it: a CRLF file fails on macOS and Linux
     # because the carriage return becomes part of the file name being checked.
@@ -352,7 +341,7 @@ Write-Host 'verify' -ForegroundColor Cyan
 
 # A leftover hand_* file is how a release ends up shipping something nobody rebuilt, so it is a
 # failure rather than a warning.
-$handFiles = @(Get-ChildItem -LiteralPath $OutDir -File -Filter 'hand_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+$handFiles = @(Get-ChildItem -LiteralPath $outPath -File -Filter 'hand_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
 $extra = @($handFiles | Where-Object { $expectedNames -notcontains $_ })
 $missing = @($expectedNames | Where-Object { $handFiles -notcontains $_ })
 $namesDetail = ''
@@ -381,7 +370,7 @@ foreach ($target in $targets) {
     $name = Get-ArtifactName $target
     $expected = ''
     if ($sums.Entries.ContainsKey($name)) { $expected = $sums.Entries[$name] }
-    $verdict = Test-Artifact -Path (Join-Path $OutDir $name) -Target $target -ExpectedSha256 $expected
+    $verdict = Test-Artifact -Path (Join-Path $outPath $name) -Target $target -ExpectedSha256 $expected
     $artifactOk[$name] = (-not $verdict.Format) -and (-not $verdict.Hash)
     Check ("{0} is {1}" -f $name, $target.Want) (-not $verdict.Format) $verdict.Format
     Check ("{0} matches its SHA256SUMS.txt line" -f $name) (-not $verdict.Hash) $verdict.Hash
@@ -400,7 +389,7 @@ if (-not $hostTarget) {
         ("this host is {0}/{1}, which is not one of the six targets; run the rehearsal on a machine this release supports" -f $hostGoos, $hostGoarch)
 } else {
     $nativeName = Get-ArtifactName $hostTarget
-    $native = Join-Path $OutDir $nativeName
+    $native = Join-Path $outPath $nativeName
     $platform = "$hostGoos/$hostGoarch"
 
     if (-not (Test-Path -LiteralPath $native)) {
@@ -446,8 +435,8 @@ if (-not $VerifyOnly) {
 
         $payloadCopy = Join-Path $scratch $payloadName
         $magicCopy = Join-Path $scratch $magicName
-        Copy-Item -LiteralPath (Join-Path $OutDir $payloadName) -Destination $payloadCopy
-        Copy-Item -LiteralPath (Join-Path $OutDir $magicName) -Destination $magicCopy
+        Copy-Item -LiteralPath (Join-Path $outPath $payloadName) -Destination $payloadCopy
+        Copy-Item -LiteralPath (Join-Path $outPath $magicName) -Destination $magicCopy
 
         $payloadHash = Get-Sha256 $payloadCopy
         $intact = Test-Artifact -Path $payloadCopy -Target $payloadTarget -ExpectedSha256 $payloadHash
@@ -479,11 +468,11 @@ if (-not $VerifyOnly) {
 Write-Host ''
 if ($script:failures.Count -eq 0) {
     Write-Host 'RELEASE-REHEARSAL: all checks passed' -ForegroundColor Green
-    Write-Host ("  artefacts: {0}" -f $OutDir) -ForegroundColor DarkGray
+    Write-Host ("  artefacts: {0}" -f $outPath) -ForegroundColor DarkGray
     exit 0
 }
 
 Write-Host ("RELEASE-REHEARSAL: {0} check(s) failed" -f $script:failures.Count) -ForegroundColor Red
 foreach ($failure in $script:failures) { Write-Host "  - $failure" -ForegroundColor Red }
-Write-Host ("  artefacts: {0}" -f $OutDir) -ForegroundColor DarkGray
+Write-Host ("  artefacts: {0}" -f $outPath) -ForegroundColor DarkGray
 exit 1

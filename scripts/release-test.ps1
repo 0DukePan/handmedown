@@ -160,7 +160,7 @@ if (-not (Test-Path -LiteralPath $rehearsal)) {
 }
 
 if (-not $Version) {
-    $Version = 'v0.0.0-rehearsal-' + [guid]::NewGuid().ToString('n').Substring(0, 8)
+    $Version = 'v0.0.0-rehearsal.' + [guid]::NewGuid().ToString('n').Substring(0, 8)
 }
 
 $out = Join-Path $env:TEMP ('hand-release-test-' + [guid]::NewGuid().ToString('n'))
@@ -168,7 +168,7 @@ $out = Join-Path $env:TEMP ('hand-release-test-' + [guid]::NewGuid().ToString('n
 Write-Host ''
 Write-Host ("release-test: rehearsing {0} into {1}" -f $Version, $out) -ForegroundColor Cyan
 
-$run = Invoke-Rehearsal -Parameters @{ Version = $Version; OutDir = $out }
+$run = Invoke-Rehearsal -Parameters @{ Version = $Version; Out = $out }
 $output = $run.Output
 $exitCode = $run.Code
 
@@ -294,7 +294,7 @@ $copy = Join-Path $env:TEMP ('hand-release-corrupt-' + [guid]::NewGuid().ToStrin
 New-Item -ItemType Directory -Force -Path $copy | Out-Null
 if (Test-Path -LiteralPath $out) { Copy-Item -Path (Join-Path $out '*') -Destination $copy -Force }
 
-$intact = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; OutDir = $copy }
+$intact = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; Out = $copy }
 Check 'an untouched copy verifies' ($intact.Code -eq 0) ("exit={0} {1}" -f $intact.Code, $intact.Output.Trim())
 
 # Damage one byte in the middle of a linux artefact. The header still says ELF, so only the checksum
@@ -306,7 +306,7 @@ if (Test-Path -LiteralPath $victim) {
     Flip-Byte $victim ([int64]($size / 2))
 }
 
-$corrupt = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; OutDir = $copy }
+$corrupt = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; Out = $copy }
 Check 'a corrupted artefact makes verification exit non-zero' ($corrupt.Code -ne 0) ("exit={0}" -f $corrupt.Code)
 Check 'the failure names the corrupted file' ($corrupt.Output.Contains($victimName)) $corrupt.Output.Trim()
 
@@ -320,7 +320,7 @@ $machoName = 'hand_darwin_arm64'
 $macho = Join-Path $copy $machoName
 if (Test-Path -LiteralPath $macho) { Flip-Byte $macho ([int64]0) }
 
-$format = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; OutDir = $copy }
+$format = Invoke-Rehearsal -Parameters @{ VerifyOnly = $true; Out = $copy }
 Check 'a clobbered header makes verification exit non-zero' ($format.Code -ne 0) ("exit={0}" -f $format.Code)
 Check 'the failure names the file whose header is wrong' ($format.Output.Contains($machoName)) $format.Output.Trim()
 

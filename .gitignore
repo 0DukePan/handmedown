@@ -4,9 +4,6 @@
 /agent/bin/
 **/*.test
 
-# Release artefacts from scripts\release-rehearsal.ps1. Built, never committed: a release is a tag.
-/dist/
-
 # Elixir / OTP
 /brain/_build/
 /brain/deps/
@@ -27,6 +24,9 @@ data/
 brain/*.db
 brain/*.db-shm
 brain/*.db-wal
+
+# Release rehearsal output. The artefacts are rebuildable; only the contract is committed.
+/dist/
 
 # Python from scripts/
 __pycache__/

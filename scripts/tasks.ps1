@@ -7,8 +7,8 @@
 #   scripts\tasks.ps1 brain        run the brain (dev)
 #   scripts\tasks.ps1 proof        local proof: hard-kill a run, prove finished work is not repeated
 #   scripts\tasks.ps1 e2e          end-to-end: brain, agent, lease, completion, brain crash
-#   scripts\tasks.ps1 release-rehearsal v0.1.0   cut the six release artefacts locally, verify them
-#   scripts\tasks.ps1 release-test              test the rehearsal: names, formats, checksums, corruption
+#   scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
+#   scripts\tasks.ps1 release-test                 test that rehearsal: names, formats, checksums, corruption
 #
 # There is deliberately no Makefile: `make` is not on Windows by default, and a task runner that only
 # half the contributors can run is worse than none.
@@ -16,11 +16,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'help')]
+    [ValidateSet('check', 'fmt', 'build', 'agent', 'brain', 'proof', 'e2e', 'release-rehearsal', 'release-test', 'test-installers', 'test-workflows', 'measure-sizes', 'help')]
     [string]$Task = 'help',
 
-    # Everything after the task name, passed through to `go run` for the `agent` task and to the
-    # rehearsal for `release-rehearsal` (where the first argument is the version).
+    # Everything after the task name, passed through to `go run` for the `agent` task.
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
 )
@@ -71,6 +70,10 @@ function Invoke-Check {
         Step 'mix compile --warnings-as-errors' { mix compile --warnings-as-errors }
         Step 'mix test' { mix test }
     } finally { Pop-Location }
+    # Offline and instant, so it belongs in the normal gate: a workflow that stopped matching the
+    # artefact contract is a broken release waiting to happen.
+    Step 'workflow contract' { Invoke-ChildScript (Join-Path $repo 'scripts\test-workflows.ps1') }
+
     Write-Host ''
     Write-Host 'check: ok' -ForegroundColor Green
 }
@@ -93,14 +96,82 @@ function Invoke-Build {
     try { Step 'mix release' { mix release --overwrite } } finally { Pop-Location }
 }
 
+# Runs a proof script as a child PowerShell process.
+#
+# These scripts finish with `exit N`. Invoked with `&`, that exit would terminate *this* runner - a
+# failing proof would kill the task runner silently instead of reporting the failure. A child process
+# gives a real exit code and leaves the runner alive to explain what happened.
+function Invoke-ChildScript([string]$Path, [string[]]$Arguments = @()) {
+    if (-not (Test-Path -LiteralPath $Path)) { throw "$Path is missing" }
+    $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+    # A proof script that fails writes to stderr on purpose. With 'Stop', PowerShell 5.1 would turn that
+    # into a NativeCommandError and bury the exit code, so relax it just for the call and throw our own,
+    # clearer message afterwards.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $powershell -NoProfile -ExecutionPolicy Bypass -File $Path @Arguments
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) { throw "$([System.IO.Path]::GetFileName($Path)) failed (exit $code)" }
+}
+
+function Invoke-MeasureSizes {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\measure-sizes.ps1'
+    # Passing "update" rewrites the docs; the default only reports, so a stale number fails rather
+    # than being silently corrected.
+    if ($Rest -and $Rest[0] -eq 'update') {
+        Invoke-ChildScript $script @('-Update')
+    } else {
+        Invoke-ChildScript $script @('-Check')
+    }
+}
+
+function Invoke-TestInstallers {
+    Invoke-ChildScript (Join-Path $repo 'scripts\test-installers.ps1')
+}
+
+function Invoke-TestWorkflows {
+    Invoke-ChildScript (Join-Path $repo 'scripts\test-workflows.ps1')
+}
+
+function Invoke-ReleaseRehearsal {
+    Need-Toolchains
+    $script = Join-Path $repo 'scripts\release-rehearsal.ps1'
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw "scripts\release-rehearsal.ps1 is missing"
+    }
+
+    # The version is a tag-shaped argument because that is what a real release injects. Anything after
+    # it is forwarded as-is: Invoke-ChildScript starts a new powershell process, so flags keep their
+    # meaning instead of being bound by this parameter block.
+    $arguments = @('-Version', 'v0.0.0-rehearsal')
+    if ($Rest -and $Rest.Count -ge 1) {
+        $arguments = @('-Version', $Rest[0])
+        if ($Rest.Count -gt 1) { $arguments += $Rest[1..($Rest.Count - 1)] }
+    }
+
+    Invoke-ChildScript $script $arguments
+}
+
+# The rehearsal's own test. It lives in the normal task list rather than in check because it builds
+# six binaries: cheap enough to run on purpose, too slow to run on every edit.
+function Invoke-ReleaseTest {
+    Need-Toolchains
+    Invoke-ChildScript (Join-Path $repo 'scripts\release-test.ps1')
+}
+
 function Invoke-E2E {
     Need-Toolchains
     $script = Join-Path $repo 'scripts\e2e.ps1'
     if (-not (Test-Path -LiteralPath $script)) {
         throw "scripts\e2e.ps1 is missing"
     }
-    & $script
-    if ($LASTEXITCODE -ne 0) { throw "e2e failed (exit $LASTEXITCODE)" }
+    Invoke-ChildScript $script
 }
 
 function Invoke-Proof {
@@ -109,40 +180,7 @@ function Invoke-Proof {
     if (-not (Test-Path -LiteralPath $script)) {
         throw "scripts\proofs.ps1 does not exist yet: the behavioural proofs are built in M2 and M5."
     }
-    & $script
-    if ($LASTEXITCODE -ne 0) { throw "proofs failed (exit $LASTEXITCODE)" }
-}
-
-function Invoke-ReleaseRehearsal {
-    Need-Toolchains
-    $script = Join-Path $repo 'scripts\release-rehearsal.ps1'
-    if (-not (Test-Path -LiteralPath $script)) {
-        throw 'scripts\release-rehearsal.ps1 is missing'
-    }
-    # The task takes the version and nothing else. Everything else the rehearsal accepts (-OutDir,
-    # -VerifyOnly) belongs to the script, and pretending to pass flags through here would only produce
-    # a binding error that reads like a rehearsal bug.
-    if (-not $Rest -or $Rest.Count -eq 0) {
-        throw 'release-rehearsal: a version is required. Example: scripts\tasks.ps1 release-rehearsal v0.1.0'
-    }
-    if ($Rest.Count -gt 1) {
-        $unexpected = $Rest[1..($Rest.Count - 1)] -join ' '
-        $message = 'release-rehearsal: unexpected argument(s): ' + $unexpected +
-            '. This task takes the version only; run scripts\release-rehearsal.ps1 directly for -OutDir or -VerifyOnly.'
-        throw $message
-    }
-    & $script -Version $Rest[0]
-    if ($LASTEXITCODE -ne 0) { throw "release rehearsal failed (exit $LASTEXITCODE)" }
-}
-
-function Invoke-ReleaseTest {
-    Need-Toolchains
-    $script = Join-Path $repo 'scripts\release-test.ps1'
-    if (-not (Test-Path -LiteralPath $script)) {
-        throw 'scripts\release-test.ps1 is missing'
-    }
-    & $script
-    if ($LASTEXITCODE -ne 0) { throw "release rehearsal test failed (exit $LASTEXITCODE)" }
+    Invoke-ChildScript $script
 }
 
 switch ($Task) {
@@ -161,6 +199,9 @@ switch ($Task) {
     'e2e'   { Invoke-E2E }
     'release-rehearsal' { Invoke-ReleaseRehearsal }
     'release-test'      { Invoke-ReleaseTest }
+    'test-installers' { Invoke-TestInstallers }
+    'test-workflows' { Invoke-TestWorkflows }
+    'measure-sizes' { Invoke-MeasureSizes }
     default {
         @'
 handmedown tasks
@@ -172,14 +213,10 @@ handmedown tasks
   scripts\tasks.ps1 brain     run the brain in dev
   scripts\tasks.ps1 proof     local proof: hard-kill and resume a run
   scripts\tasks.ps1 e2e       end-to-end: brain, agent, lease, completion, brain crash
-
-  scripts\tasks.ps1 release-rehearsal v0.1.0
-                              cut the six hand_<os>_<arch> artefacts into dist\, write
-                              SHA256SUMS.txt, verify formats, architectures, checksums, and the
-                              injected version, and prove a corrupted copy is rejected
-  scripts\tasks.ps1 release-test
-                              test the rehearsal above: runs it into a temp directory and checks the
-                              names, formats, checksums and corruption path independently
+  scripts\tasks.ps1 release-rehearsal [vX.Y.Z]   build + verify the six release artefacts offline
+  scripts\tasks.ps1 release-test      test that rehearsal: names, formats, checksums, corruption  scripts\tasks.ps1 test-installers   both installers, against a stubbed release over loopback
+  scripts\tasks.ps1 test-workflows    the release/CI workflows match the artefact contract
+  scripts\tasks.ps1 measure-sizes [update]   the sizes quoted in the docs, measured from a real build
 
 Toolchains: _bootstrap\env.ps1 is loaded automatically when go/mix are not on PATH.
 '@ | Write-Host
