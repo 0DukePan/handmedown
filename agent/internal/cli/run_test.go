@@ -11,6 +11,11 @@ import (
 // The test binary is also the command under test, so these end-to-end tests need no shell and no
 // external tool: `hand run -- <test binary>` is a real subprocess doing real file writes.
 func TestMain(m *testing.M) {
+	// The demo re-invokes this binary as its unit of work. During tests that binary is the test
+	// executable, so the same dispatch has to exist here or `hand demo` cannot be tested end to end.
+	if len(os.Args) > 1 && os.Args[1] == demoWorkerCommand {
+		os.Exit(demoWorker(os.Stdout, os.Stderr))
+	}
 	if mode := os.Getenv("HAND_CLI_HELPER"); mode != "" {
 		os.Exit(helper(mode))
 	}

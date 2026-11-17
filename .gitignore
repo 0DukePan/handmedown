@@ -25,6 +25,9 @@ brain/*.db
 brain/*.db-shm
 brain/*.db-wal
 
+# Release rehearsal output. The artefacts are rebuildable; only the contract is committed.
+/dist/
+
 # Python from scripts/
 __pycache__/
 *.pyc

@@ -1,0 +1,25 @@
+{
+  "//": "The single source of truth for release artefacts. The rehearsal builds these names, the workflows assert them, the installers construct URLs from them, and the tests compare every consumer against this file. Changing a name here and nowhere else is supposed to break the consumers, loudly.",
+  "version": 1,
+  "agent_targets": [
+    { "goos": "linux",   "goarch": "amd64", "ext": "" },
+    { "goos": "linux",   "goarch": "arm64", "ext": "" },
+    { "goos": "linux",   "goarch": "arm",   "ext": "" },
+    { "goos": "darwin",  "goarch": "arm64", "ext": "" },
+    { "goos": "darwin",  "goarch": "amd64", "ext": "" },
+    { "goos": "windows", "goarch": "amd64", "ext": ".exe" }
+  ],
+  "agent_pattern": "hand_{goos}_{goarch}{ext}",
+  "brain_pattern": "handmedown-brain_{version}_{goos}_{goarch}.tar.gz",
+  "checksums": "SHA256SUMS.txt",
+  "env": {
+    "version": "HAND_VERSION",
+    "repo": "HAND_REPO",
+    "base_url": "HAND_BASE_URL",
+    "install_dir": "HAND_INSTALL_DIR"
+  },
+  "budgets": {
+    "docs/demo.gif": 1500000,
+    "docs/dashboard.png": 1500000
+  }
+}

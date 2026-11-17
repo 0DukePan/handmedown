@@ -27,6 +27,12 @@ instead of guessing.
 - Brain: supervision root with a fleet process registry; `mix release` produces a runnable release.
 - Tooling: `scripts\tasks.ps1` as the single task entry point, portable no-admin toolchains under
   `_bootstrap\`, CI across three OSes for the agent, release workflow emitting checksummed binaries.
+- Release: `scripts\tasks.ps1 release-rehearsal v0.1.0` cuts the release locally and offline - six
+  `hand_<goos>_<goarch>` binaries with the version injected at link time, `SHA256SUMS.txt` in sha256sum
+  format, then verifies each artefact by its own header (ELF/Mach-O/PE and the architecture inside it),
+  re-derives every digest, runs the native build to check it prints the injected version and platform,
+  and proves the verifier rejects a deliberately corrupted copy. `scripts\tasks.ps1 release-test` runs
+  the whole thing and re-derives the same facts independently.
 
 ### Changed
 
@@ -41,10 +47,10 @@ Sizes are from a local Windows/amd64 build on 2026-11-17, because they are the a
 
 | Artifact | Size |
 |---|---:|
-| `hand.exe` (agent, `-ldflags "-s -w"`) | 7.08 MB |
-| brain `mix release` | 111.7 MB |
+| `hand.exe` (agent, `-ldflags "-s -w"`) | <!-- size:agent -->7.10 MB<!-- /size:agent --> |
+| brain `mix release` | <!-- size:brain -->125.32 MB<!-- /size:brain --> |
 
-The ~16x gap is why the agent is Go: it has to run on a phone that already has an OS.
+The <!-- size:ratio -->17.6x<!-- /size:ratio --> gap is why the agent is Go: it has to run on a phone that already has an OS.
 
 ### Added
 

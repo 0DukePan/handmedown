@@ -154,7 +154,10 @@ defmodule Handmedown.Store do
   end
 
   def handle_call(:snapshot, _from, state) do
-    {:reply, %{jobs: Map.values(state.jobs), shards: Map.values(state.shards)}, state}
+    # String keys, not atoms: this map is rendered directly by the dashboard and encoded as JSON, and
+    # both of those address it by string key. Atom keys here meant the dashboard silently reported "no
+    # jobs" for every fleet that had jobs.
+    {:reply, %{"jobs" => Map.values(state.jobs), "shards" => Map.values(state.shards)}, state}
   end
 
   def handle_call(:flush, _from, state) do

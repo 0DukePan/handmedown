@@ -305,6 +305,10 @@ defmodule Handmedown.Schedule do
 
     send(node.pid, {:hand, :lease, leased})
 
+    # A leased shard means the job is no longer queued, so the job's status has to move at placement
+    # time - otherwise the dashboard calls a running job "queued" until the first shard finishes.
+    refresh_job(state, leased["job_id"])
+
     update_in(state.nodes[node_id], fn current ->
       %{current | running: MapSet.put(current.running, shard["id"])}
     end)
@@ -393,6 +397,8 @@ defmodule Handmedown.Schedule do
       {:ok, job} ->
         shards = job["shards"]
 
+        # "queued" means no shard has started. Anything leased or finished means the job is under way,
+        # and calling that "queued" on the dashboard is a lie the user can see.
         status =
           cond do
             Enum.any?(shards, &(&1["status"] == "conflicted")) -> "conflicted"
@@ -458,7 +464,7 @@ defmodule Handmedown.Schedule do
 
   defp all_shards, do: safe(fn -> Store.shards() end, [])
   defp fetch_job(id), do: safe(fn -> Store.job(id) end, :error)
-  defp store_snapshot, do: safe(fn -> Store.snapshot() end, %{jobs: [], shards: []})
+  defp store_snapshot, do: safe(fn -> Store.snapshot() end, %{"jobs" => [], "shards" => []})
   defp schedule_sweep(ms), do: Process.send_after(self(), :sweep, ms)
 
   defp now_ms, do: System.system_time(:millisecond)

@@ -23,6 +23,7 @@ usage:
   hand run [flags] -- <command...>   run once per input, resumable and content-addressed
   hand submit [flags] -- <command...>  send a job to a brain and watch it there
   hand join [flags]                  enrol this machine and run whatever it is leased
+  hand demo [flags]                  prove the recovery guarantee on this machine alone
   hand version                       print the version and build target
   hand help                          print this text
 
@@ -48,6 +49,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return submitCommand(args[1:], stdout, stderr)
 	case "join":
 		return joinCommand(args[1:], stdout, stderr)
+	case "demo":
+		return runDemo(args[1:], stdout, stderr)
+	case demoWorkerCommand:
+		// Internal: the demo re-invokes this same binary as its unit of work. Deliberately absent from
+		// the usage text, because it is an implementation detail of the demo.
+		return demoWorker(stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout, "hand %s (%s)\n", version.Version, version.Runtime())
 		return exitOK
