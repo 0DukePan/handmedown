@@ -7,8 +7,14 @@ defmodule Handmedown.Web.Dashboard do
   on the server (where the data and the tests are), and the browser stays a dumb terminal.
   """
 
-  @doc "The full page: shell, initial render, and the SSE client."
-  def page(snapshot, join_url) do
+  @doc """
+  The full page.
+
+  `live? false` renders the same dashboard without the event stream. That exists for two real callers:
+  the README screenshot (a headless browser never reaches network-idle while an SSE connection is open,
+  so a live page cannot be captured) and anyone who wants a static snapshot of a fleet.
+  """
+  def page(snapshot, join_url, live? \\ true) do
     """
     <!doctype html>
     <html lang="en">
@@ -25,14 +31,20 @@ defmodule Handmedown.Web.Dashboard do
       </header>
       <main id="fleet">#{fragment(snapshot)}</main>
       <footer>leases expire after #{snapshot["lease_ms"] || 30_000} ms; a device that goes quiet loses its shard, not its work</footer>
-      <script>
-        const stream = new EventSource("/events");
-        stream.onmessage = (event) => {
-          document.getElementById("fleet").innerHTML = JSON.parse(event.data);
-        };
-      </script>
+      #{if live?, do: sse_client(), else: ""}
     </body>
     </html>
+    """
+  end
+
+  defp sse_client do
+    """
+    <script>
+      const stream = new EventSource("/events");
+      stream.onmessage = (event) => {
+        document.getElementById("fleet").innerHTML = JSON.parse(event.data);
+      };
+    </script>
     """
   end
 

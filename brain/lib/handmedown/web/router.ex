@@ -11,11 +11,19 @@ defmodule Handmedown.Web.Router do
   alias Handmedown.{Broadcast, Schedule}
   alias Handmedown.Web.Dashboard
 
+  # Query-string parsing is explicit, and deliberately not Plug.Parsers: a body parser would read and
+  # consume the POST body (and reject an unexpected content type with 415), while the one POST here
+  # reads its own body so a malformed payload cannot take the router down.
   plug(:match)
+  plug(:query_string)
   plug(:dispatch)
 
   get "/" do
-    send_resp(conn, 200, Dashboard.page(Schedule.snapshot_now(), join_url()))
+    # `?live=0` serves the same dashboard without the event stream. A headless browser never reaches
+    # network-idle while an SSE connection is open, so the README screenshot needs a static snapshot;
+    # keeping it here rather than in the capture script means there is one renderer, not two.
+    live? = conn.query_params["live"] != "0"
+    send_resp(conn, 200, Dashboard.page(Schedule.snapshot_now(), join_url(), live?))
   end
 
   # Server-sent events: one long response, one JSON-encoded HTML fragment per state change. The
@@ -62,6 +70,13 @@ defmodule Handmedown.Web.Router do
   end
 
   # --- helpers --------------------------------------------------------------
+
+  # Populates conn.query_params from the query string without touching the body.
+  defp query_string(%Plug.Conn{query_string: ""} = conn, _opts), do: conn
+
+  defp query_string(conn, _opts) do
+    Plug.Conn.fetch_query_params(conn)
+  end
 
   defp stream(conn) do
     receive do

@@ -95,4 +95,28 @@ defmodule Handmedown.StoreTest do
       File.rm_rf(dir)
     end
   end
+
+  # The dashboard renders this map by string key and the API JSON-encodes it. Atom keys here once made
+  # every fleet report "no jobs", and nothing failed: the page simply showed an empty state.
+  #
+  # The store is a singleton shared with other tests, so this asserts on *its own* job rather than on
+  # totals: an earlier test's shards are not this test's business, and depending on them made this fail
+  # one run in four.
+  test "the snapshot is addressed by string keys" do
+    job = Store.create_job(%{"cmd" => ["tool"], "inputs" => ["a"], "shards" => 2})
+    snapshot = Store.snapshot()
+
+    assert Map.has_key?(snapshot, "jobs")
+    assert Map.has_key?(snapshot, "shards")
+    refute Map.has_key?(snapshot, :jobs)
+    refute Map.has_key?(snapshot, :shards)
+
+    assert Enum.any?(snapshot["jobs"], &(&1["id"] == job["id"]))
+
+    own_shards = Enum.filter(snapshot["shards"], &(&1["job_id"] == job["id"]))
+    assert length(own_shards) == 2
+
+    # Every entry must be a string-keyed map too: the renderer reads "status", "inputs" and friends.
+    assert Enum.all?(own_shards, &Map.has_key?(&1, "status"))
+  end
 end
